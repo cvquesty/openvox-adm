@@ -20,16 +20,27 @@ plan openvoxadm::subplans::configure_openvoxdb (
   $postgres_target = get_targets($postgresql_host, 1)
   $primary_target  = get_targets($primary_host, 1)
 
-  # Create puppetdb database and user in PostgreSQL
+  # Create puppetdb database and user in PostgreSQL (trust auth for local)
   out::message("Creating puppetdb database...")
   run_command(@("SQL"), $postgres_target)
     sudo -u postgres psql -c "CREATE DATABASE puppetdb;" 2>/dev/null || true
-    sudo -u postgres psql -c "CREATE USER puppetdb WITH PASSWORD 'puppetdb';" 2>/dev/null || true
+    sudo -u postgres psql -c "CREATE USER puppetdb;" 2>/dev/null || true
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE puppetdb TO puppetdb;" 2>/dev/null || true
     sudo -u postgres psql -c "ALTER DATABASE puppetdb OWNER TO puppetdb;" 2>/dev/null || true
     | SQL
 
-  # Configure database.ini for openvoxdb
+  # Configure pg_hba.conf for trust auth from localhost (for openvoxdb)
+  out::message("Configuring pg_hba.conf for local trust auth...")
+  run_command(@("CMD"), $postgres_target)
+    for f in /var/lib/pgsql/data/pg_hba.conf /etc/postgresql/*/main/pg_hba.conf; do
+      if [ -f "$f" ]; then
+        grep -q "puppetdb.*puppetdb.*trust" "$f" || echo 'host  puppetdb  puppetdb  127.0.0.1/32  trust' >> "$f"
+      fi
+    done
+    | CMD
+  run_command('systemctl reload postgresql 2>/dev/null || true', $postgres_target)
+
+  # Configure database.ini for openvoxdb (trust auth - empty password)
   out::message("Configuring database.ini...")
   apply($puppetdb_target) {
     file { '/etc/puppetlabs/puppetdb/conf.d':
@@ -49,7 +60,6 @@ plan openvoxadm::subplans::configure_openvoxdb (
 subname = //${postgresql_host}:5432/puppetdb
 classname = org.postgresql.Driver
 username = puppetdb
-password = puppetdb
 log_slow_statements = 10
 | INI
     }
