@@ -12,10 +12,10 @@ This is a feature-for-feature port of [puppetlabs-peadm](https://github.com/pupp
 
 | Feature | Status |
 |---------|--------|
-| `install` plan (standard architecture) | 🚧 In progress |
+| `install` plan (standard architecture) | ✅ Core complete |
 | `install` plan (large/extra-large) | ⏳ Planned |
 | `upgrade` plan | ⏳ Planned |
-| `status` plan | ⏳ Planned |
+| `status` plan | ✅ Basic |
 | `add_compiler` / `add_compilers` | ⏳ Planned |
 | `add_database` | ⏳ Planned |
 | `add_replica` | ⏳ Planned |
@@ -25,6 +25,8 @@ This is a feature-for-feature port of [puppetlabs-peadm](https://github.com/pupp
 | `migrate` / `convert` / `uninstall` | ⏳ Planned |
 | Documentation | 🚧 In progress |
 | Tests | ⏳ Planned |
+
+**Note**: peadm has 329 files, 35 plans, 85 tasks, 23 functions (~4,200+ lines in plans alone). This foundation covers the core install flow for standard architecture. Full feature parity is a multi-session effort.
 
 ## What is OpenVox?
 
