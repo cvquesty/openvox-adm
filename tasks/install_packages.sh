@@ -23,7 +23,7 @@ elif [ "$OS_FAMILY" = "Debian" ] || [ "$OS_FAMILY" = "Ubuntu" ]; then
     dpkg -i /tmp/openvox-release.deb
     apt-get update
   fi
-  apt-get install -y openvox-server openvox-agent openvoxdb
+  apt-get install -y openbolt openvox-agent openvox-server openvoxdb openvoxdb-termini
 else
   echo "Unsupported OS: ${OS_FAMILY}"
   exit 1

@@ -13,7 +13,7 @@ This is a feature-for-feature port of [puppetlabs-peadm](https://github.com/pupp
 | Feature | Status |
 |---------|--------|
 | `install` plan (standard/large/XL) | ✅ Complete |
-| `upgrade` plan | ⏳ Planned |
+| `upgrade` plan | ✅ Complete |
 | `status` plan | ✅ Complete |
 | `add_compiler` / `add_compilers` | ✅ Complete |
 | `add_database` | ✅ Complete |
@@ -26,7 +26,20 @@ This is a feature-for-feature port of [puppetlabs-peadm](https://github.com/pupp
 | Documentation | ✅ Core docs |
 | Tests | ⏳ Planned |
 
-**Stats**: 43 files, 19 plans, 3 tasks, 7 functions. Core feature parity with peadm achieved. Still needs: `upgrade` plan, tests, full docs.
+**Stats**: 44 files, 20 plans, 3 tasks, 7 functions. Feature parity with peadm achieved for OpenVox infrastructure.
+
+### OpenVox Product Suite
+
+openvox-adm provisions the full OpenVox stack:
+
+| Component | Package | Purpose |
+|-----------|---------|---------|
+| openvox-server | `openvox-server` | Puppet Server + CA (primary/compilers) |
+| openvox-agent | `openvox-agent` | Puppet agent on all nodes |
+| openvoxdb | `openvoxdb` | PuppetDB for facts, catalogs, reports |
+| openvox-gui | (separate project) | Web UI for management (planned integration) |
+
+See: [openvox-server](https://github.com/OpenVoxProject/openvox-server), [openvox-agent](https://github.com/OpenVoxProject/openvox-agent), [openvox-gui](https://github.com/cvquesty/openvox-gui), [voxdocs](https://github.com/cvquesty/voxdocs).
 
 ## What is OpenVox?
 
