@@ -197,7 +197,7 @@ to primary manually or via your own automation.
 
 ---
 
-## Common Gotchas
+## ⚠️ Common Gotchas
 
 ### "Certificate not found" after adding a compiler
 
@@ -235,3 +235,4 @@ Make sure your LB is configured to check this URL and that port 8140 is open.
 - [Check cluster status](status.md) to verify everything is healthy.
 - Set up [backups](backup_restore.md) before making more changes.
 - Review [architectures](architectures.md) if you want to re-architect.
+

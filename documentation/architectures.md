@@ -165,7 +165,7 @@ downtime.
 
 ---
 
-## Availability Groups
+## 🔀 Availability Groups
 
 In HA (Extra Large) architectures, components are assigned to an
 **availability group** — either "A" or "B". This lets openvox-adm (and you)

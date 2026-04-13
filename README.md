@@ -1,5 +1,9 @@
 # OpenVox Administration Module (openvox-adm)
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-0.1.0-green.svg)](metadata.json)
+[![OpenVox](https://img.shields.io/badge/OpenVox-8.x-FF7F00.svg)](https://voxpupuli.org/openvox/)
+
 Bolt plans for deploying and managing OpenVox infrastructure at scale.
 
 This project is a **feature-for-feature port** of

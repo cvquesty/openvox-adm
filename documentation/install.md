@@ -276,7 +276,7 @@ Then sign the certificate on the primary and run `puppet agent -t`.
 
 ---
 
-## Troubleshooting
+## ⚠️ Troubleshooting
 
 ### "Permission denied (publickey)" when running Bolt
 

@@ -162,7 +162,7 @@ bolt plan run openvoxadm::replace_failed_postgresql \
 
 ---
 
-## Best Practices
+## 💡 Best Practices
 
 - **Test your backups.** Restore to a test server periodically to make sure
   they actually work.

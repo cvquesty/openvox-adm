@@ -164,7 +164,7 @@ If you see an error, scroll up to find the failure message and check
 
 ---
 
-## Step 4: Verify the Installation
+## ✅ Step 4: Verify the Installation
 
 ### 4.1 Check Status of All Services
 
@@ -392,7 +392,7 @@ port conflicts.
 
 ---
 
-## Summary Checklist
+## ✅ Summary Checklist
 
 After completing this runbook, you should have:
 
@@ -412,3 +412,7 @@ After completing this runbook, you should have:
 - **Set up backups**: see [backup_restore.md](backup_restore.md)
 - **Check status regularly**: `bolt plan run openvoxadm::status --targets all`
 - **Explore the docs**: [README](../README.md), [install.md](install.md)
+
+
+
+

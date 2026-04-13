@@ -140,7 +140,7 @@ bolt plan run openvoxadm::status --targets openvox
 
 ---
 
-## When Things Look Wrong
+## ⚠️ When Things Look Wrong
 
 Here are some quick follow-up commands when status shows problems:
 
