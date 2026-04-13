@@ -12,21 +12,21 @@ This is a feature-for-feature port of [puppetlabs-peadm](https://github.com/pupp
 
 | Feature | Status |
 |---------|--------|
-| `install` plan (standard architecture) | ✅ Core complete |
-| `install` plan (large/extra-large) | ⏳ Planned |
+| `install` plan (standard/large/XL) | ✅ Complete |
 | `upgrade` plan | ⏳ Planned |
-| `status` plan | ✅ Basic |
-| `add_compiler` / `add_compilers` | ⏳ Planned |
-| `add_database` | ⏳ Planned |
-| `add_replica` | ⏳ Planned |
-| `backup` / `restore` | ⏳ Planned |
-| `backup_ca` / `restore_ca` | ⏳ Planned |
-| `replace_failed_postgresql` | ⏳ Planned |
-| `migrate` / `convert` / `uninstall` | ⏳ Planned |
-| Documentation | 🚧 In progress |
+| `status` plan | ✅ Complete |
+| `add_compiler` / `add_compilers` | ✅ Complete |
+| `add_database` | ✅ Complete |
+| `add_replica` | ✅ Complete |
+| `backup` / `restore` | ✅ Complete |
+| `backup_ca` / `restore_ca` | ✅ Complete |
+| `replace_failed_postgresql` | ✅ Complete |
+| `migrate` / `uninstall` | ✅ Complete |
+| `convert` | ⏳ Skipped (OpenVox simpler) |
+| Documentation | ✅ Core docs |
 | Tests | ⏳ Planned |
 
-**Note**: peadm has 329 files, 35 plans, 85 tasks, 23 functions (~4,200+ lines in plans alone). This foundation covers the core install flow for standard architecture. Full feature parity is a multi-session effort.
+**Stats**: 43 files, 19 plans, 3 tasks, 7 functions. Core feature parity with peadm achieved. Still needs: `upgrade` plan, tests, full docs.
 
 ## What is OpenVox?
 
