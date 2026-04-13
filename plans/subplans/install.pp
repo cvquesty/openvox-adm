@@ -49,14 +49,32 @@ plan openvoxadm::subplans::install (
     }
   }
 
-  # If dedicated PostgreSQL, configure it
+  # Determine where openvoxdb is running
+  $puppetdb_host = $primary_postgresql_host ? {
+    undef   => $primary_host,
+    default => $primary_postgresql_host,
+  }
+
+  # If dedicated PostgreSQL, configure it (installs postgresql + openvoxdb)
   if $primary_postgresql_host {
     out::message("Configuring PostgreSQL host...")
     run_plan('openvoxadm::subplans::configure_postgresql',
       postgresql_host => $primary_postgresql_host,
       primary_host    => $primary_host,
     )
+  } else {
+    # Co-located on primary: ensure openvoxdb is enabled
+    out::message("Enabling OpenVoxDB on primary...")
+    run_command('systemctl enable --now openvoxdb', $primary_host)
   }
+
+  # Configure OpenVoxDB with PostgreSQL backend
+  out::message("Configuring OpenVoxDB...")
+  run_plan('openvoxadm::subplans::configure_openvoxdb',
+    puppetdb_host   => $puppetdb_host,
+    postgresql_host => $puppetdb_host,
+    primary_host    => $primary_host,
+  )
 
   return({ 'status' => 'installed', 'hosts' => $all_targets.map |$t| { $t.name } })
 }

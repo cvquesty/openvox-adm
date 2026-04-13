@@ -24,9 +24,18 @@ This is a feature-for-feature port of [puppetlabs-peadm](https://github.com/pupp
 | `migrate` / `uninstall` | ✅ Complete |
 | `convert` | ⏳ Skipped (OpenVox simpler) |
 | Documentation | ✅ Core docs |
-| Tests | ⏳ Planned |
+| Tests | ✅ Basic (status, upgrade, install_packages) |
 
-**Stats**: 44 files, 20 plans, 3 tasks, 7 functions. Feature parity with peadm achieved for OpenVox infrastructure.
+**Stats**: 45 files, 21 plans, 3 tasks, 7 functions, 3 spec tests. Feature parity with peadm achieved for OpenVox infrastructure.
+
+### OpenVoxDB Configuration
+
+openvox-adm fully configures OpenVoxDB with PostgreSQL:
+- Creates `puppetdb` database and user
+- Configures `database.ini` connection
+- Configures `puppetdb.conf` on primary
+- Sets up certificate allowlist
+- Restarts services in correct order
 
 ### OpenVox Product Suite
 
