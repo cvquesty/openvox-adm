@@ -1,0 +1,11 @@
+{
+  "puppet_task_version": 1,
+  "supports_noop": false,
+  "description": "Install OpenVox packages on a target node",
+  "parameters": {
+    "version": {
+      "type": "String",
+      "description": "OpenVox version to install"
+    }
+  }
+}

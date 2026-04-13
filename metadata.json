@@ -1,0 +1,71 @@
+{
+  "name": "openvox-adm",
+  "version": "0.1.0",
+  "author": "OpenVox Project",
+  "summary": "Bolt plans for deploying and managing OpenVox infrastructure",
+  "license": "Apache-2.0",
+  "source": "https://github.com/OpenVoxProject/openvox-adm",
+  "project_page": "https://github.com/OpenVoxProject/openvox-adm",
+  "issues_url": "https://github.com/OpenVoxProject/openvox-adm/issues",
+  "dependencies": [
+    {
+      "name": "puppetlabs/stdlib",
+      "version_requirement": ">= 9.0.0 < 10.0.0"
+    },
+    {
+      "name": "puppetlabs/node_manager",
+      "version_requirement": ">= 1.0.1 < 2.0.0"
+    },
+    {
+      "name": "puppet/format",
+      "version_requirement": ">= 0.1.0 < 3.0.0"
+    },
+    {
+      "name": "puppetlabs/service",
+      "version_requirement": ">= 1.3.0 <= 4.0.0"
+    },
+    {
+      "name": "puppetlabs/package",
+      "version_requirement": ">= 2.1.0 <= 4.0.0"
+    },
+    {
+      "name": "puppetlabs/inifile",
+      "version_requirement": ">= 6.1.0 < 7.0.0"
+    },
+    {
+      "name": "puppetlabs/ruby_task_helper",
+      "version_requirement": ">= 1.0.0 < 2.0.0"
+    }
+  ],
+  "operatingsystem_support": [
+    {
+      "operatingsystem": "RedHat",
+      "operatingsystemrelease": ["8", "9"]
+    },
+    {
+      "operatingsystem": "CentOS",
+      "operatingsystemrelease": ["9"]
+    },
+    {
+      "operatingsystem": "AlmaLinux",
+      "operatingsystemrelease": ["8", "9"]
+    },
+    {
+      "operatingsystem": "Rocky",
+      "operatingsystemrelease": ["8", "9"]
+    },
+    {
+      "operatingsystem": "Ubuntu",
+      "operatingsystemrelease": ["20.04", "22.04", "24.04"]
+    }
+  ],
+  "requirements": [
+    {
+      "name": "puppet",
+      "version_requirement": ">= 8.0.0 < 9.0.0"
+    }
+  ],
+  "pdk-version": "3.0.0",
+  "template-url": "https://github.com/puppetlabs/pdk-templates.git#main",
+  "template-ref": "tags/3.0.0-0-g056e50d"
+}
