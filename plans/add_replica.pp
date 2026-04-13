@@ -33,8 +33,8 @@ plan openvoxadm::add_replica (
   # Configure replica as secondary server
   run_command("puppet config set server ${primary_host} --section main", $replica_target)
   run_command("puppet config set ca_server ${primary_host} --section main", $replica_target)
-  run_command("puppet config set peadm_role server --section main", $replica_target)
-  run_command("puppet config set peadm_availability_group ${replica_avail_group} --section main", $replica_target)
+  run_command("puppet config set openvoxadm_role server --section main", $replica_target)
+  run_command("puppet config set openvoxadm_availability_group ${replica_avail_group} --section main", $replica_target)
 
   # Start replica
   run_command('systemctl enable --now openvox-server', $replica_target)

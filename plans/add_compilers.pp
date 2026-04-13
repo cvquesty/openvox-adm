@@ -65,7 +65,7 @@ plan openvoxadm::add_compilers (
     )
 
     # Set availability group in puppet.conf
-    run_command("puppet config set peadm_availability_group ${avail_group_letter} --section main", $compiler)
+    run_command("puppet config set openvoxadm_availability_group ${avail_group_letter} --section main", $compiler)
 
     # Start compiler
     run_command('systemctl enable --now openvox-server', $compiler)
