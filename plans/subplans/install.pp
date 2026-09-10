@@ -15,11 +15,17 @@ plan openvoxadm::subplans::install (
 ) {
   out::message("Installing OpenVox ${version} on cluster...")
 
-  # Collect all targets
-  $all_targets = get_targets([$primary_host, $replica_host, $compiler_hosts, $primary_postgresql_host, $replica_postgresql_host]).unique
+  # Collect all targets, dropping undef optional hosts
+  $all_targets = get_targets(openvoxadm::flatten_compact([
+    $primary_host,
+    $replica_host,
+    $compiler_hosts,
+    $primary_postgresql_host,
+    $replica_postgresql_host,
+  ])).unique
 
-  # Install openvox-release repo and packages
-  $install_results = $all_targets.map |$target| {
+  # Install openvox-release repo and packages in parallel
+  parallelize($all_targets) |$target| {
     run_task('openvoxadm::install_packages', $target,
       version => $version,
     )
