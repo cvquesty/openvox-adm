@@ -10,12 +10,15 @@
 #   The primary OpenVox server
 # @param primary_postgresql_host
 #   Optional dedicated PostgreSQL host (if using separate DB)
+# @param version
+#   OpenVox version to install on compilers
 plan openvoxadm::add_compilers (
-  Enum['A', 'B']                       $avail_group_letter = 'A',
-  Optional[Array[String[1]]]           $dns_alt_names = undef,
-  TargetSpec                           $compiler_hosts,
-  Openvoxadm::SingleTargetSpec         $primary_host,
+  Enum['A', 'B']                         $avail_group_letter = 'A',
+  Optional[Array[String[1]]]             $dns_alt_names = undef,
+  TargetSpec                             $compiler_hosts,
+  Openvoxadm::SingleTargetSpec           $primary_host,
   Optional[Openvoxadm::SingleTargetSpec] $primary_postgresql_host = undef,
+  Openvoxadm::Openvox_version            $version = '8.11.0',
 ) {
   $compiler_targets = get_targets($compiler_hosts)
   $primary_target   = get_targets($primary_host, 1)
@@ -53,7 +56,7 @@ plan openvoxadm::add_compilers (
     }
 
     # Install packages
-    run_task('openvoxadm::install_packages', $compiler, version => '8.11.0')
+    run_task('openvoxadm::install_packages', $compiler, version => $version)
 
     # Bootstrap cert
     run_command('puppet ssl bootstrap --waitforcert 60', $compiler)
