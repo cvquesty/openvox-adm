@@ -1,34 +1,42 @@
-# OpenVox Administration Module (openvox-adm)
+<div align="center">
 
-> **Maturity: v0.1.0 — Work in Progress (WIP)**  
-> This module is under active development. Plans work for many workflows, but
-> several components remain Experimental or WIP. Read the [Current Status](#current-status)
-> table before relying on a plan in production.
+# OpenVox Administration Module
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.1.0-orange.svg)](metadata.json)
-[![Maturity](https://img.shields.io/badge/Maturity-WIP-critical.svg)](#current-status)
-[![OpenVox](https://img.shields.io/badge/OpenVox-8.x-FF7F00.svg)](https://voxpupuli.org/openvox/)
-[![Repo](https://img.shields.io/badge/GitHub-cvquesty%2Fopenvox--adm-informational.svg)](https://github.com/cvquesty/openvox-adm)
+**Bolt plans for deploying and managing OpenVox infrastructure at scale**
 
-### Component maturity
+[![Version](https://img.shields.io/badge/version-0.1.0-orange?style=for-the-badge)](metadata.json)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge)](LICENSE)
+[![OpenVox](https://img.shields.io/badge/OpenVox-8.x-FF7F00?style=for-the-badge)](https://voxpupuli.org/openvox/)
+[![Bolt](https://img.shields.io/badge/Bolt-3.17%2B-black?style=for-the-badge)](https://www.puppet.com/docs/bolt/latest/bolt.html)
+[![Status](https://img.shields.io/badge/status-WIP-lightgrey?style=for-the-badge)](#current-status)
 
-| Component | Badge |
-|-----------|-------|
-| install (standard) | ![Beta](https://img.shields.io/badge/install%20standard-Beta-blue.svg) |
-| install (large) | ![Experimental](https://img.shields.io/badge/install%20large-Experimental-yellow.svg) |
-| install (XL/HA) | ![WIP](https://img.shields.io/badge/install%20XL%2FHA-WIP-orange.svg) |
-| upgrade | ![Experimental](https://img.shields.io/badge/upgrade-Experimental-yellow.svg) |
-| status | ![Beta](https://img.shields.io/badge/status-Beta-blue.svg) |
-| add_compilers | ![Beta](https://img.shields.io/badge/add__compilers-Beta-blue.svg) |
-| add_database | ![WIP](https://img.shields.io/badge/add__database-WIP-orange.svg) |
-| add_replica | ![Experimental](https://img.shields.io/badge/add__replica-Experimental-yellow.svg) |
-| backup / restore | ![Experimental](https://img.shields.io/badge/backup%2Frestore-Experimental-yellow.svg) |
-| migrate | ![WIP](https://img.shields.io/badge/migrate-WIP-orange.svg) |
-| uninstall | ![Beta](https://img.shields.io/badge/uninstall-Beta-blue.svg) |
-| tests | ![Experimental](https://img.shields.io/badge/tests-Experimental-yellow.svg) |
+[![install standard](https://img.shields.io/badge/install%20(standard)-Beta-blue?style=flat-square)](#current-status)
+[![install large](https://img.shields.io/badge/install%20(large)-Experimental-orange?style=flat-square)](#current-status)
+[![install XL/HA](https://img.shields.io/badge/install%20(XL%2FHA)-WIP-lightgrey?style=flat-square)](#current-status)
+[![upgrade](https://img.shields.io/badge/upgrade-Experimental-orange?style=flat-square)](#current-status)
+[![status](https://img.shields.io/badge/status-Beta-blue?style=flat-square)](#current-status)
+[![add_compilers](https://img.shields.io/badge/add__compilers-Beta-blue?style=flat-square)](#current-status)
+[![add_database](https://img.shields.io/badge/add__database-WIP-lightgrey?style=flat-square)](#current-status)
+[![add_replica](https://img.shields.io/badge/add__replica-Experimental-orange?style=flat-square)](#current-status)
+[![backup/restore](https://img.shields.io/badge/backup%2Frestore-Experimental-orange?style=flat-square)](#current-status)
+[![migrate](https://img.shields.io/badge/migrate-WIP-lightgrey?style=flat-square)](#current-status)
+[![uninstall](https://img.shields.io/badge/uninstall-Beta-blue?style=flat-square)](#current-status)
+[![tests](https://img.shields.io/badge/tests-Experimental-orange?style=flat-square)](#current-status)
 
-Bolt plans for deploying and managing OpenVox infrastructure at scale.
+[![GitHub Stars](https://img.shields.io/github/stars/cvquesty/openvox-adm?style=flat-square)](https://github.com/cvquesty/openvox-adm/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/cvquesty/openvox-adm?style=flat-square)](https://github.com/cvquesty/openvox-adm/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/cvquesty/openvox-adm?style=flat-square)](https://github.com/cvquesty/openvox-adm/commits/development)
+
+[Quick Start](#quick-start) · [**Status**](#current-status) · [Architectures](#supported-architectures) · [Install runbook](documentation/runbook-install-standard.md) · [Documentation](#documentation)
+
+</div>
+
+---
+
+> **Maturity:** v0.1.0 on `development`. Standard install is the most exercised path.
+> Large is Experimental. Extra-Large / HA is WIP. Check [Current Status](#current-status)
+> before relying on a plan in production.
+
 
 This project is a **feature-for-feature port** of
 [puppetlabs-peadm](https://github.com/puppetlabs/puppetlabs-peadm) adapted
