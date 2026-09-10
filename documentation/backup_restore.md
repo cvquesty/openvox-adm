@@ -1,222 +1,195 @@
-# Backup and Restore
+# Backup and restore
 
-Backing up your OpenVox cluster is one of the most important things you can
-do. If a server dies, a certificate is accidentally deleted, or you need to
-roll back an upgrade, a good backup will save your bacon.
+**Maturity:** Experimental for `backup` / `restore` / `backup_ca` /
+`restore_ca`. Related DR plans (`migrate`, `replace_failed_postgresql`) are
+**WIP**.
 
-This guide covers:
-
-- Full backups of your primary server
-- CA-only backups (certificates)
-- Restoring from backups
-- Replacing a failed PostgreSQL host
-
-> **Friendly tip:** Run backups *before* making any major changes — upgrades,
-> adding replicas, or touching certificates. You will thank yourself later.
+This page documents the **actual on-disk contract** implemented by the plans.
 
 ---
 
-## Table of Contents
+## Mental model
 
-- [What Gets Backed Up](#what-gets-backed-up)
-- [Backup / Restore Contract](#backup--restore-contract)
-- [Full Backup](#full-backup)
-- [CA-Only Backup](#ca-only-backup)
-- [Restore from Backup](#restore-from-backup)
-- [Restore CA Only](#restore-ca-only)
-- [Replace a Failed PostgreSQL Host](#replace-a-failed-postgresql-host)
+| Plan | Where it runs | What you get |
+|------|---------------|--------------|
+| `backup` | Target (usually primary) | Outer `openvox-backup-<UTC-ts>.tar.gz` under output dir |
+| `restore` | Target | Extracts that archive **on the same host path you provide** |
+| `backup_ca` | Target (`target` param) | `…/openvox-ca-backup-<ts>/ca_backup.tgz` |
+| `restore_ca` | Target (`target` param) | Copies SSL tree back; **no** service restart |
 
----
+Default parent directory: **`/var/backups/openvox`** (not `/tmp`).
 
-## What Gets Backed Up
-
-The backup plans capture the following data:
-
-| Data | Description |
-|------|-------------|
-| **CA and SSL certificates** | All certs and keys under `/etc/puppetlabs/puppet/ssl/` |
-| **Puppet configuration** | `puppet.conf`, `puppetdb.conf`, and related files |
-| **r10k environments** | All deployed environments under `/etc/puppetlabs/code/environments/` |
-| **OpenVoxDB data** | Facts, catalogs, and reports (only if stored locally) |
-
-> **Note:** If you use a dedicated PostgreSQL host, the database data is
-> *not* included in the backup. You should back up PostgreSQL separately
-> (e.g., with `pg_dump` or barman).
+Bolt’s controller (your laptop/jump host) is **not** the backup disk unless you
+copy files there yourself.
 
 ---
 
-## Backup / Restore Contract
+## Full recovery backup — `openvoxadm::backup`
 
-`openvoxadm::backup` and `openvoxadm::restore` share one contract:
+### Parameters
 
-1. **Backup** writes component archives into a timestamped working directory,
-   then wraps that directory into a **single** `recovery.tar.gz`.
-2. **Restore** takes that outer `*.tar.gz` path (`input_file`), extracts it on
-   the **target**, and restores any present component archives
-   (`certs.tar.gz`, `config.tar.gz`, `environments.tar.gz`, `puppetdb.tar.gz`).
-3. **Migrate** calls backup, then passes `backup['path']` (the recovery
-   tarball) into restore.
+| Name | Default | Notes |
+|------|---------|-------|
+| `targets` | required | Single host to back up |
+| `output_directory` | `/var/backups/openvox` | Parent directory |
+| `backup_type` | `recovery` | **Dead** — not branched in code |
 
-Default output location is `/var/backups/openvox` (not `/tmp`).
-
-Destructive plans (`restore`, `restore_ca`, `uninstall`) require
-`confirm => true`.
-
----
-
-## Full Backup
-
-A full backup captures everything listed above. Run it regularly — daily
-or before any significant change.
+### Example
 
 ```bash
 bolt plan run openvoxadm::backup \
-  --targets primary.example.com \
-  --params '{"output_directory":"/var/backups/openvox"}'
+  --params '{"targets":"primary.example.com"}'
 ```
 
-**Output:** A single recovery tarball such as:
-
-`/var/backups/openvox/openvox-backup-2026-04-13T120000Z.tar.gz`
-
-That tarball contains a directory with:
-
-- `certs.tar.gz` — all certificates and keys
-- `config.tar.gz` — puppet.conf and related files
-- `environments.tar.gz` — your deployed code
-- `puppetdb.tar.gz` — local OpenVoxDB data (if any)
-- `MANIFEST.txt` — listing of backup contents
-
-The plan return value includes:
-
-- `path` — absolute path to the recovery `.tar.gz` (use this with restore)
-- `directory` — the working directory that was wrapped
-
-**Recommended:** Automate this with a cron job on your primary:
-
-```cron
-0 2 * * * bolt plan run openvoxadm::backup --targets primary.example.com --params '{"output_directory":"/var/backups/openvox"}' >> /var/log/openvox-backup.log 2>&1
-```
-
----
-
-## CA-Only Backup
-
-Sometimes you only need the certificates — for example, if you want to
-migrate to new hardware but keep the same CA.
+Custom directory:
 
 ```bash
-bolt plan run openvoxadm::backup_ca \
-  --targets primary.example.com \
-  --params '{"output_directory":"/var/backups/openvox"}'
+bolt plan run openvoxadm::backup \
+  --params '{
+    "targets":"primary.example.com",
+    "output_directory":"/var/backups/openvox"
+  }'
 ```
 
-**Output:** A single file `ca_backup.tgz` inside a timestamped directory under
-`/var/backups/openvox`.
+### On-disk contract (single recovery tarball)
+
+1. Create working dir:
+   `/var/backups/openvox/openvox-backup-<UTC-timestamp>/` (mode `0700`)
+2. Component archives inside that directory:
+   - `certs.tar.gz` ← `/etc/puppetlabs/puppet/ssl`
+   - `config.tar.gz` ← `/etc/puppetlabs/puppet`
+   - `environments.tar.gz` ← code environments (`_catch_errors`)
+   - `puppetdb.tar.gz` ← `/opt/puppetlabs/server/data/puppetdb` (`_catch_errors`)
+3. `MANIFEST.txt` listing
+4. Wrap the directory into:
+   **`${output_directory}/openvox-backup-<ts>.tar.gz`**
+
+Return shape includes `{ path => recovery.tar.gz, directory => working_dir }`.
+
+### What is not included
+
+- No `pg_dump` of PostgreSQL
+- Dedicated PG datadir beyond PuppetDB’s application data path is not dumped as
+  a database dump
+- `backup_type => custom` does nothing special
 
 ---
 
-## Restore from Backup
+## Restore — `openvoxadm::restore`
 
-If disaster strikes, you can restore your primary from a full recovery
-tarball produced by `openvoxadm::backup`.
+### Safety gate
+
+Requires **`confirm => true`**. Without it the plan fails immediately.
+
+### Parameters
+
+| Name | Notes |
+|------|-------|
+| `targets` | Restore host |
+| `input_file` | Must match `.*\.tar\.gz$` — path **on the target** |
+| `confirm` | Must be `true` |
+
+### Example
 
 ```bash
 bolt plan run openvoxadm::restore \
-  --targets primary.example.com \
   --params '{
-    "input_file":"/var/backups/openvox/openvox-backup-2026-04-13T120000Z.tar.gz",
-    "confirm": true
+    "targets":"primary.example.com",
+    "input_file":"/var/backups/openvox/openvox-backup-20260115T120000Z.tar.gz",
+    "confirm":true
   }'
 ```
 
-**What the plan does:**
+### Steps the plan takes
 
-1. Extracts the recovery tarball **on the target**.
-2. Stops openvox-server and openvoxdb.
-3. Restores certificates, config, environments, and local OpenVoxDB data when
-   those component archives exist (existence is checked on the target).
-4. Restarts services.
+1. Extract outer tarball on the target next to the file
+2. Stop `openvox-server` and `openvoxdb`
+3. For each component archive that **exists on the target**, extract into the
+   matching path
+4. Restart `openvox-server` and `openvoxdb`
 
-> **Warning:** This overwrites existing files. You must pass `confirm => true`.
+Does **not** reinstall packages. OpenVox must already be installed.
+
+### Footguns
+
+1. **`input_file` is on the target**, not on the Bolt controller.
+2. Copy archives between hosts before restore if needed (`scp`, shared storage,
+   etc.).
+3. Restoring SSL/config onto a host with a different hostname/certname can
+   break TLS identity — know what you are restoring.
+4. PostgreSQL contents may still be wrong/empty if you only restore app files
+   without a DB dump strategy.
 
 ---
 
-## Restore CA Only
+## CA-only backup — `openvoxadm::backup_ca`
 
-If you only need to restore certificates (for example, after an accidental
-deletion), use the CA-only restore:
+**Parameter name is `target` (singular).**
+
+```bash
+bolt plan run openvoxadm::backup_ca \
+  --params '{"target":"primary.example.com"}'
+```
+
+Creates a timestamped directory under `/var/backups/openvox` and writes
+`ca_backup.tgz` from `/etc/puppetlabs/puppet/ssl`.
+
+---
+
+## CA-only restore — `openvoxadm::restore_ca`
+
+Requires **`confirm => true`**. Parameter name is **`target`**.
 
 ```bash
 bolt plan run openvoxadm::restore_ca \
-  --targets primary.example.com \
   --params '{
-    "file_path":"/var/backups/openvox/openvox-ca-backup-.../ca_backup.tgz",
-    "confirm": true
+    "target":"primary.example.com",
+    "file_path":"/var/backups/openvox/openvox-ca-backup-…/ca_backup.tgz",
+    "confirm":true
   }'
 ```
 
-This extracts the CA backup and copies certificates back into place.
+Default extract dir: `/var/backups/openvox/openvox_recovery`.
 
----
-
-## Replace a Failed PostgreSQL Host
-
-If your dedicated PostgreSQL host dies and you have a replacement ready,
-this plan reconfigures your cluster to use the new host.
+**Important:** this plan does **not** stop or restart `openvox-server` /
+`openvoxdb`. Restart services yourself if processes still hold old material:
 
 ```bash
-bolt plan run openvoxadm::replace_failed_postgresql \
-  --params '{
-    "primary_host": "primary.example.com",
-    "working_postgresql_host": "db1.example.com",
-    "failed_postgresql_host": "db2.example.com",
-    "replacement_postgresql_host": "db3.example.com",
-    "version": "8.11.0"
-  }'
+systemctl restart openvox-server openvoxdb
 ```
 
-**Parameters:**
+---
 
-| Parameter | Description |
-|-----------|-------------|
-| `primary_host` | Your primary OpenVox server |
-| `working_postgresql_host` | The still-healthy PostgreSQL host |
-| `failed_postgresql_host` | The dead host (for reference) |
-| `replacement_postgresql_host` | The new host that will take over |
-| `version` | OpenVox package version to install on the replacement |
+## Migrate interaction
 
-**What the plan does:**
-
-1. Stops services on the primary.
-2. Installs packages on the replacement.
-3. Configures PostgreSQL + OpenVoxDB via the shared configure subplans
-   (does **not** set `puppet config set server` to the database host).
-4. Restarts services.
-
-> **Note:** This assumes you have already restored the database from a
-> backup onto the replacement host (for example, with `pg_basebackup` or
-> `pg_restore`). The plan does *not* copy data — it only rewires the
-> connections.
+`openvoxadm::migrate` calls `backup` on the old primary and `restore` on the
+new primary with `confirm => true`, but **does not copy** the tarball between
+hosts. See [migrate.md](migrate.md).
 
 ---
 
-## 💡 Best Practices
+## Replace failed PostgreSQL (related WIP)
 
-- **Test your backups.** Restore to a test server periodically to make sure
-  they actually work.
-- **Store backups off-site.** A backup on the same server is no backup at
-  all if the datacenter burns down.
-- **Encrypt backups.** Certificates are sensitive — consider encrypting
-  backup files at rest.
-- **Document your restore procedures.** When things go wrong, you will be
-  stressed. A written runbook helps.
+`openvoxadm::replace_failed_postgresql` rewires OpenVoxDB/Postgres config to a
+replacement host. It does **not** restore database data. Operators must restore
+DB contents separately. `working_postgresql_host` and `failed_postgresql_host`
+are required params but only logged.
 
 ---
 
-## Next Steps
+## Operator checklist
 
-- [Check status](status.md) to verify your cluster is healthy after any
-  restore.
-- Review [architectures](architectures.md) to understand which components
-  need backing up in your setup.
+1. Run `backup` on a healthy primary; record the returned `path`
+2. Copy that file off-box to safe storage
+3. Before restore drills: install OpenVox on the target, place the tarball on
+   the target path, pass `confirm => true`
+4. After `restore_ca`, restart services manually
+5. Do not assume migrate moves files for you
+
+---
+
+## Related
+
+- [migrate.md](migrate.md)
+- [uninstall.md](uninstall.md)
+- [troubleshooting.md](troubleshooting.md)

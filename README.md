@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-orange?style=for-the-badge)](metadata.json)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![OpenVox](https://img.shields.io/badge/OpenVox-8.x-FF7F00?style=for-the-badge)](https://voxpupuli.org/openvox/)
-[![Bolt](https://img.shields.io/badge/Bolt-3.17%2B-black?style=for-the-badge)](https://www.puppet.com/docs/bolt/latest/bolt.html)
+[![Bolt](https://img.shields.io/badge/Bolt-3.17%2B-black?style=for-the-badge)](https://help.puppet.com/bolt/current/topics/bolt_installing.htm)
 [![Status](https://img.shields.io/badge/status-WIP-lightgrey?style=for-the-badge)](#current-status)
 
 [![install standard](https://img.shields.io/badge/install%20(standard)-Beta-blue?style=flat-square)](#current-status)
@@ -33,165 +33,158 @@
 
 ---
 
-> **Maturity:** v0.1.0 on `development`. Standard install is the most exercised path.
-> Large is Experimental. Extra-Large / HA is WIP. Check [Current Status](#current-status)
-> before relying on a plan in production.
+> **Maturity:** v0.1.0 on `development`. Standard install is the most exercised path
+> (**Beta**). Large is **Experimental**. Extra-Large / HA is **WIP** — replica and dual
+> PostgreSQL parameters install packages but do **not** configure streaming replication
+> or failover. Check [Current Status](#current-status) before relying on a plan.
 
+This project is a **PEADM-inspired** lifecycle toolkit for **OpenVox 8.x**, adapted from
+the ideas in [puppetlabs-peadm](https://github.com/puppetlabs/puppetlabs-peadm). It is
+**not** a full feature-for-feature port: several PEADM capabilities (true HA Postgres,
+load-balancer automation, convert) are absent or stubbed. If you have used PEADM, the
+plan names will feel familiar, but always trust the maturity table below over memory.
 
-This project is a **feature-for-feature port** of
-[puppetlabs-peadm](https://github.com/puppetlabs/puppetlabs-peadm) adapted
-for **OpenVox** — the community-maintained, open-source fork of Puppet.
-If you have used PEADM to manage Puppet Enterprise clusters, you will feel
-right at home with openvox-adm.
-
-> **Friendly tip:** OpenVox uses the same commands, config paths, and Forge
-> modules as Puppet. The only difference you will notice is the package names
-> (`openvox-server` instead of `puppetserver`, `openvoxdb` instead of
-> `puppetdb`, and so on). Everything else works the way you expect.
+> **Friendly tip:** OpenVox keeps Puppet-compatible commands and many `/etc/puppetlabs/`
+> paths. Package and service names change (`openvox-server`, `openvoxdb`, `openvox-agent`).
+> See [concepts.md](documentation/concepts.md) for a plain-English glossary.
 
 ---
 
 ## Table of Contents
 
 - [What Is OpenVox?](#what-is-openvox)
-- [What Does openvox-adm Do?](#what-does-openvox-adm-do)
+- [What openvox-adm Is (and Is Not)](#what-openvox-adm-is-and-is-not)
 - [Supported Architectures](#supported-architectures)
 - [Quick Start](#quick-start)
+- [Plan Reference](#plan-reference)
 - [Current Status](#current-status)
 - [Requirements](#requirements)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
+- [Links](#links)
 
 ---
 
 ## What Is OpenVox?
 
-[OpenVox](https://voxpupuli.org/openvox/) is a community-maintained,
-drop-in replacement for open-source Puppet. It was created by the
-[Vox Pupuli](https://voxpupuli.org/) community after Puppet (now owned by
-Perforce) scaled back open-source development. OpenVox is fully compatible
-with Puppet 8.x — same DSL, same facts, same modules from the Forge.
+[OpenVox](https://voxpupuli.org/openvox/) is a community-maintained, drop-in replacement
+for open-source Puppet. It is developed by the [Vox Pupuli](https://voxpupuli.org/)
+community. OpenVox 8.x is compatible with Puppet 8-era DSL, facts, and Forge modules.
 
 **You can think of OpenVox as "Puppet Community Edition, continued."**
 
 | OpenVox Package | Puppet Equivalent | Purpose |
 |-----------------|-------------------|---------|
-| `openvox-agent` | `puppet-agent` | The agent that runs on every node |
-| `openvox-server` | `puppetserver` | The server (CA, catalog compilation, r10k) |
-| `openvoxdb` | `puppetdb` | Stores facts, catalogs, reports, and enables PQL queries |
-| `openbolt` | `bolt` | Orchestration tool (included for convenience) |
+| `openvox-agent` | `puppet-agent` | Agent that applies catalogs on each node |
+| `openvox-server` | `puppetserver` | Server: CA, catalog compilation, related CLIs |
+| `openvoxdb` | `puppetdb` | Stores facts, catalogs, reports; enables PQL |
+| `openbolt` | `bolt` | Orchestration package (Debian/Ubuntu install path only) |
 
-> **Note:** You **cannot** install OpenVox and legacy Puppet on the same
-> system. Pick one or the other. If you are migrating from Puppet, back up
-> `/etc/puppetlabs/` first, then replace the packages.
+> **Important:** Do **not** mix classic Puppet packages and OpenVox packages on the same
+> host. Back up `/etc/puppetlabs/` before any migration.
 
 ---
 
-## What Does openvox-adm Do?
+## What openvox-adm Is (and Is Not)
 
-openvox-adm automates the **lifecycle of your OpenVox infrastructure**.
-It does *not* create virtual machines or cloud instances for you — you bring
-your own servers (or VMs). Once you have clean Linux nodes available,
-openvox-adm will:
+### Is
 
-1. **Install** OpenVox components on all nodes (primary, compilers, database,
-   replicas)
-2. **Configure** everything so it "just works": certificates, OpenVoxDB,
-   r10k, services
-3. **Scale out** by adding more compilers, a dedicated database host, or a
-   replica server for high availability
-4. **Upgrade** your entire cluster to a new OpenVox version
-5. **Backup and restore** your configuration and CA certificates
-6. **Recover** from a failed PostgreSQL host
-7. **Migrate** from one set of hosts to another
-8. **Check status** of your entire cluster at a glance
-9. **Uninstall** cleanly when you want to start over
+- A **Bolt module** (`metadata.json` name `openvox-adm`, plan namespace `openvoxadm::`,
+  version `0.1.0`, Apache-2.0).
+- Thin orchestration: `run_task` / `run_command` / small `apply()` blocks over SSH.
+- Lifecycle plans for **bring-your-own Linux hosts**: install, configure, expand,
+  upgrade, backup/restore, migrate (limited), replace failed Postgres (rewire only),
+  status, uninstall.
+- Packages come from Vox Pupuli repos (`yum.voxpupuli.org` / `apt.voxpupuli.org`).
 
-**In short:** You describe *what* you want (a standard cluster, a large
-cluster with dedicated database, an extra-large HA cluster), and openvox-adm
-does the heavy lifting.
+### Is not
+
+- Not a Forge-published “stable” product yet (v0.1.0 WIP/Beta).
+- Not a VM or cloud provisioner (no Terraform / cloud APIs).
+- Not a full PEADM port: **no** convert plan, **no** streaming replication, **no**
+  HAProxy config generation (even though `puppetlabs/haproxy` appears in the module
+  `Puppetfile`).
+- Does **not** install PostgreSQL as an explicit package in `install_packages`
+  (depends on OS package already present or as a dependency — fragile).
+- Does **not** install the `r10k` gem/package; `configure_r10k` assumes `r10k` and
+  `/etc/puppetlabs/r10k/` already exist.
 
 ---
 
 ## Supported Architectures
 
-openvox-adm supports three deployment architectures. Pick the one that fits
-your scale and availability needs.
+Pick the architecture that matches your scale — and the maturity you can accept.
 
-### Standard (Single Server) — Beta
+### Standard (single server) — Beta
 
-The simplest setup. Everything runs on one node:
+Everything on one host:
 
-- **openvox-server** — handles CA duties, catalog compilation, and r10k
-- **openvoxdb + PostgreSQL** — co-located on the same server
+- `openvox-server` (CA + compile)
+- `openvoxdb` + PostgreSQL co-located
 
-**Best for:** Labs, small teams, or environments with fewer than 500 nodes.
+**Best for:** labs, small teams, learning the module.
 
-See the step-by-step guide:
+Step-by-step:
 [documentation/runbook-install-standard.md](documentation/runbook-install-standard.md).
 
-### Large (Dedicated Database) — Experimental
+### Large (compilers + dedicated DB) — Experimental
 
-Split the database onto its own host for better performance:
+- Primary: `openvox-server`
+- One or more compilers (`ca=false`)
+- Dedicated PostgreSQL + OpenVoxDB host
 
-- **Primary server** — openvox-server + r10k
-- **Compilers** — two or more openvox-server instances with `ca=false`
-- **Dedicated PostgreSQL + OpenVoxDB** — offloads storage and queries
+**Honest gaps today:** compiler CSRs are **not** auto-signed during install; Large
+install writes the OpenVoxDB certificate-allowlist with the **primary only** (compilers
+are appended later by `add_compilers`); pool / load-balancer addresses are **not**
+applied by the install plan.
 
-**Best for:** 500 to 5,000 nodes, or when you want to tune the database
-independently.
+### Extra Large / HA — WIP
 
-### Extra Large (High Availability) — WIP
+Parameters exist for `replica_host`, `replica_postgresql_host`, and compiler pool
+addresses. **What the code actually does:** packages may install on those hosts;
+replica and replica-PG are **not** configured during install; pool address params are
+**dead** (accepted, unused); **streaming replication is not implemented**.
 
-Full redundancy with availability groups:
+Treat XL install examples as scaffolding only. Prefer Standard (or carefully validated
+Large) until HA work lands.
 
-- **Primary + Replica** servers (assigned to "A" and "B" groups)
-- **Compilers in A/B pools** behind a load balancer (HAProxy recommended)
-- **PostgreSQL A + PostgreSQL B** (streaming replication for DR)
-- **OpenVoxDB on each PostgreSQL host**
-- **Load balancer** in front of the compiler pools
-
-**Best for:** More than 5,000 nodes, or when you need zero-downtime
-failover.
-
-> **Availability Groups:** In HA setups, components are tagged with group A
-> or B. If group A fails, group B can take over. You assign compilers to
-> groups when you add them.
-
-For more details, see [documentation/architectures.md](documentation/architectures.md).
+Details: [documentation/architectures.md](documentation/architectures.md).
 
 ---
 
 ## Quick Start
 
-### Step 1: Install Bolt
+This Quick Start covers **Standard install only** (Beta). For Large/XL, read the
+architecture and install guides first and expect manual certificate and allowlist work.
 
-You need [Bolt](https://www.puppet.com/docs/bolt/latest/bolt_installing) on a
-"jump host" — a machine that can SSH to all your OpenVox nodes. Bolt 3.17.0
-or later is required.
+### Step 1: Install Bolt on a jump host
+
+You need [Bolt](https://help.puppet.com/bolt/current/topics/bolt_installing.htm)
+**>= 3.17.0 and < 6.0.0** on a machine that can SSH to every target as root.
+
+Follow the official install page for your OS. **Do not** pipe an HTML documentation
+URL into `sh` (older broken examples did `curl …bolt_installing.html | sh`).
 
 ```bash
-# Example: macOS via Homebrew
-brew install --cask puppet-bolt
-
-# Example: Linux (follow the official docs — do NOT pipe an HTML page into sh)
-# https://www.puppet.com/docs/bolt/latest/bolt_installing.html
+# After install:
+bolt --version
+# Must report a version in the supported range (>= 3.17.0 < 6.0.0)
 ```
 
-> **Note:** Older examples that did `curl …bolt_installing.html | sh` were wrong —
-> that URL returns HTML documentation, not an installer script.
+> Recent Bolt packages may require Puppet Core / PE credentials for the vendor repos.
+> Use the official docs for the current method on your platform.
 
-### Step 2: Install openvox-adm
+### Step 2: Get the openvox-adm module (Git / Puppetfile)
 
-**Option A — Git (recommended while the module is pre-Forge):**
+While the module is pre-Forge, install from GitHub `cvquesty/openvox-adm`.
 
 ```bash
 mkdir openvox-deploy && cd openvox-deploy
 bolt project init openvox-deploy
 ```
 
-Add to your project's `Puppetfile`:
+Add to the project `Puppetfile`:
 
 ```ruby
 mod 'openvox-adm',
@@ -205,17 +198,13 @@ Then:
 bolt puppetfile install
 ```
 
-**Option B — Forge** (when published):
+**Forge option** (only when published):
 
 ```bash
 bolt project init openvox-deploy --modules openvox-adm
 ```
 
-### Step 3: Create an Inventory File
-
-Create an `inventory.yaml` that lists all your target nodes. Here is an
-example for a large architecture with a primary, two compilers, and a
-dedicated database host:
+### Step 3: Inventory (SSH as root)
 
 ```yaml
 ---
@@ -229,136 +218,147 @@ groups:
         run-as: root
     targets:
       - primary.example.com
-      - compiler1.example.com
-      - compiler2.example.com
-      - db.example.com
 ```
 
-> **Tip:** You can use IP addresses instead of hostnames if DNS is not yet
-> set up. Just make sure SSH works from your jump host to every target.
+Confirm connectivity:
 
-### Step 4: Run the Install Plan
+```bash
+bolt command run 'hostname' -t primary.example.com
+```
 
-For a standard single-server install:
+### Step 4: Prerequisites on the primary (Standard)
+
+1. Clean Linux host (supported EL/Ubuntu family) with outbound access to
+   `yum.voxpupuli.org` or `apt.voxpupuli.org`.
+2. **PostgreSQL** available so `systemctl enable --now postgresql` can succeed
+   (the package task does **not** install `postgresql` explicitly).
+3. Optional: install `r10k` yourself **before** passing `r10k_remote` (the module
+   does not install the gem/package).
+
+### Step 5: Run Standard install
 
 ```bash
 bolt plan run openvoxadm::install \
   --params '{"primary_host":"primary.example.com","version":"8.11.0"}'
 ```
 
-For a large install with dedicated database:
+### Step 6: What success looks like
 
-```bash
-bolt plan run openvoxadm::install \
-  --params '{
-    "primary_host":"primary.example.com",
-    "compiler_hosts":["compiler1.example.com","compiler2.example.com"],
-    "primary_postgresql_host":"db.example.com",
-    "version":"8.11.0",
-    "r10k_remote":"git@github.com:yourorg/control-repo.git"
-  }'
-```
-
-### Step 5: Post-Install Checks
-
-1. **Check status:**
+1. Plan completes without failing tasks.
+2. On the primary:
    ```bash
-   bolt plan run openvoxadm::status --targets all
+   systemctl is-active openvox-server openvoxdb postgresql
+   openvox --version || puppet --version
    ```
-
-2. **Deploy your code:**
+3. Cluster status from Bolt:
    ```bash
-   r10k deploy environment --puppetfile
+   bolt plan run openvoxadm::status --targets primary.example.com
    ```
-
-3. **Sign any pending agent certificates** on the primary (agents only — the
-   install plan signs the primary certname itself):
+4. Sign **agent** CSRs as needed (install signs the **primary certname only**):
    ```bash
    puppetserver ca list --all
    puppetserver ca sign --certname agent.example.com
    ```
+   Prefer targeted `--certname` over `--all`.
 
-You are now ready to enroll agents!
+---
+
+## Plan Reference
+
+| Plan | Maturity | One-line purpose |
+|------|----------|------------------|
+| `openvoxadm::install` | Beta / Exp / WIP by arch | Install + configure cluster roles |
+| `openvoxadm::upgrade` | Experimental | Parallel package pin + service bounce |
+| `openvoxadm::status` | Beta | Per-host service/version text |
+| `openvoxadm::add_compilers` | Beta | Add compilers + allowlist append |
+| `openvoxadm::add_compiler` | **Deprecated** | Wrapper → `add_compilers` |
+| `openvoxadm::add_database` | WIP | Dedicated DB (`init`); `pair` stubbed |
+| `openvoxadm::add_replica` | Experimental | Basic replica bring-up (no HA sync) |
+| `openvoxadm::backup` / `restore` | Experimental | Single `recovery.tar.gz` contract |
+| `openvoxadm::backup_ca` / `restore_ca` | Experimental | CA/SSL tree only |
+| `openvoxadm::migrate` | WIP | Backup then restore; **no** cross-host copy |
+| `openvoxadm::replace_failed_postgresql` | WIP | Rewire only; no data copy |
+| `openvoxadm::uninstall` | Beta | Partial package/data removal (`confirm`) |
+
+Full parameters and examples:
+[documentation/plan-reference.md](documentation/plan-reference.md).
 
 ---
 
 ## Current Status
 
-Honest maturity — **no false "Complete"** claims. Maturity levels:
+Maturity language used everywhere in this repo:
 
 - **Beta** — usable for common paths; expect rough edges
 - **Experimental** — works in limited scenarios; contracts may change
 - **WIP** — scaffolding present; not production-ready
+- **Deprecated** — still callable; prefer the replacement
 - **Skipped** — intentionally not ported
 
 | Feature | Maturity | Notes |
 |---------|----------|-------|
-| `install` (standard) | Beta | Best-tested path; see [runbook](documentation/runbook-install-standard.md) |
-| `install` (large) | Experimental | Dedicated DB path needs more validation |
-| `install` (XL/HA) | WIP | Replica + dual DB not fully wired |
-| `upgrade` | Experimental | Package pin + parallel install improved |
-| `status` | Beta | Basic cluster health check |
-| `add_compilers` | Beta | Preferred API for scaling compilers |
-| `add_compiler` | Deprecated | Thin wrapper — use `add_compilers` |
-| `add_database` | WIP | Now uses OpenVoxDB config patterns; HA pair mode stubbed |
-| `add_replica` | Experimental | Basic replica bring-up |
-| `backup` / `restore` | Experimental | Single `recovery.tar.gz` contract |
-| `backup_ca` / `restore_ca` | Experimental | Defaults under `/var/backups/openvox` |
-| `replace_failed_postgresql` | WIP | Rewires config; does not copy DB data |
-| `migrate` | WIP | Uses backup→restore recovery tarball |
-| `uninstall` | Beta | Requires `confirm => true` |
-| `convert` | Skipped | Not applicable to OpenVox |
-| Documentation | Beta | Runbooks present; keep validating against code |
-| Tests | Experimental | status, upgrade, install_packages coverage |
+| `install` (standard) | Beta | Best-tested; needs PostgreSQL present; r10k optional/manual |
+| `install` (large) | Experimental | Compilers + dedicated DB; CSR + allowlist gaps |
+| `install` (XL/HA) | WIP | Replica/dual-PG params mostly no-ops; no streaming replication |
+| `upgrade` | Experimental | Package pin + restart; no schema migrate / reconfigure |
+| `status` | Beta | Always probes openvox-server, openvoxdb, postgresql |
+| `add_compilers` | Beta | Allowlist append; CSR signing still manual |
+| `add_compiler` | Deprecated | Use `add_compilers` |
+| `add_database` | WIP | `init` wires OpenVoxDB; `pair` prints stub message |
+| `add_replica` | Experimental | Server role + group B; no CA/code/DB sync |
+| `backup` / `restore` | Experimental | Outer `openvox-backup-<ts>.tar.gz`; no `pg_dump` |
+| `backup_ca` / `restore_ca` | Experimental | Defaults under `/var/backups/openvox`; restore_ca no service restart |
+| `replace_failed_postgresql` | WIP | Rewires config; working/failed hosts logged only |
+| `migrate` | WIP | Broken for typical two-host unless shared path |
+| `uninstall` | Beta | Requires `confirm => true`; incomplete cleanup |
+| `convert` | Skipped | Absent |
+| Tests | Experimental | Thin specs only |
 
-**Project stats:** ~45 files, 21 plans, 3 tasks, 7 functions, growing specs.
+**Project shape (approx.):** public plans ≈ 14 (+ deprecated wrapper), 7 subplans,
+3 tasks, several functions/types. `plans/util/`, `manifests/setup/`, `files/`, and
+`templates/` are empty placeholders.
 
 ---
 
 ## Requirements
 
-Before you run any openvox-adm plan, make sure you have:
-
 | Requirement | Details |
 |-------------|---------|
-| **Bolt** | Version 3.17.0 or later, installed on your jump host |
-| **OpenVox** | Version 8.x (the module will install it for you) |
-| **Clean nodes** | Target servers must have no prior Puppet or OpenVox install |
-| **SSH access** | Your jump host must reach every target via SSH as root |
-| **Hostnames** | All nodes need resolvable hostnames (or use IPs in inventory) |
-| **Internet access** | Targets need outbound access to apt.voxpupuli.org or yum.voxpupuli.org |
+| **Bolt** | `>= 3.17.0 < 6.0.0` on the jump host |
+| **OpenVox** | 8.x (module installs packages; default pin `8.11.0`) |
+| **Clean nodes** | No prior Puppet/OpenVox install on targets |
+| **SSH** | Root (or equivalent) from jump host to every target |
+| **Hostnames** | Prefer resolvable names; inventory strings stringify into configs |
+| **Internet** | Targets need Vox Pupuli apt/yum repos |
+| **PostgreSQL** | Must exist for service enable; not explicitly packaged by the task |
+| **r10k** | Optional; install yourself before `r10k_remote` |
 
 ---
 
 ## Documentation
 
-The `documentation/` directory contains detailed guides for each major
-workflow:
-
 | Document | Description |
 |----------|-------------|
-| [runbook-install-standard.md](documentation/runbook-install-standard.md) | Painfully step-wise standard install runbook |
-| [install.md](documentation/install.md) | Install walkthrough with parameters explained |
-| [architectures.md](documentation/architectures.md) | Standard, Large, and Extra Large guidance |
-| [expanding.md](documentation/expanding.md) | Adding compilers, database, or replica |
-| [backup_restore.md](documentation/backup_restore.md) | Backup, restore, and DR procedures |
-| [status.md](documentation/status.md) | Checking cluster health |
-
-If you find anything unclear, please open an issue or submit a pull request.
+| [concepts.md](documentation/concepts.md) | Glossary: OpenVox vs Puppet, Bolt, certs, OpenVoxDB, architectures |
+| [plan-reference.md](documentation/plan-reference.md) | Every public plan: params, maturity, examples |
+| [runbook-install-standard.md](documentation/runbook-install-standard.md) | Painfully detailed Standard install |
+| [install.md](documentation/install.md) | Install guide (all architectures + honest gaps) |
+| [architectures.md](documentation/architectures.md) | Standard / Large / XL with maturity labels |
+| [expanding.md](documentation/expanding.md) | Compilers, database, replica (WIP called out) |
+| [upgrade.md](documentation/upgrade.md) | Upgrade plan behavior and limits |
+| [backup_restore.md](documentation/backup_restore.md) | recovery.tar.gz contract, CA, DR footguns |
+| [migrate.md](documentation/migrate.md) | Migrate plan + cross-host copy gap |
+| [uninstall.md](documentation/uninstall.md) | Uninstall + what remains on disk |
+| [status.md](documentation/status.md) | Status task output reality |
+| [troubleshooting.md](documentation/troubleshooting.md) | Footguns from the code model |
+| [security-notes.md](documentation/security-notes.md) | Confirm gates, trust auth, no SCRAM yet |
 
 ---
 
 ## Contributing
 
-We welcome contributions of all kinds:
-
-- Bug reports and feature requests
-- Documentation improvements
-- New Bolt plans or tasks
-- Tests
-
-Please follow the style of existing code and documentation. When in doubt,
-ask a question in an issue before writing a large patch.
+We welcome bug reports, docs fixes, plans/tasks, and tests. Keep documentation honest
+about maturity. Prefer small PRs against `development`.
 
 Repo: [https://github.com/cvquesty/openvox-adm](https://github.com/cvquesty/openvox-adm)
 
@@ -366,7 +366,7 @@ Repo: [https://github.com/cvquesty/openvox-adm](https://github.com/cvquesty/open
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE).
 
 ---
 
@@ -378,3 +378,4 @@ Apache License 2.0. See [LICENSE](LICENSE) for details.
 - [openvox-gui](https://github.com/cvquesty/openvox-gui)
 - [voxdocs](https://github.com/cvquesty/voxdocs)
 - [Vox Pupuli](https://voxpupuli.org/)
+- [Bolt install docs](https://help.puppet.com/bolt/current/topics/bolt_installing.htm)

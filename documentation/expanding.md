@@ -1,238 +1,192 @@
-# Expanding an OpenVox Cluster
+# Expanding an OpenVox cluster
 
-So you have a working OpenVox cluster — great! Now you want to grow it.
-Maybe you added more nodes and need more compile capacity. Maybe you want a
-dedicated database host. Or perhaps you are ready for high availability with
-a replica server.
+Day-2 plans add capacity or roles after the initial install. **Read maturity
+labels.** Several expansion paths are WIP or Experimental and do not deliver
+full HA.
 
-This guide explains how to add each component using openvox-adm's expansion
-plans.
-
-> **Friendly tip:** You can expand at any time — your existing agents keep
-> running during the process. The plans are designed to be safe to run on a
-> live cluster.
+Related: [architectures.md](architectures.md),
+[plan-reference.md](plan-reference.md), [troubleshooting.md](troubleshooting.md).
 
 ---
 
-## Table of Contents
+## Before you expand
 
-- [Add Compilers](#add-compilers)
-- [Add a Database Host](#add-a-database-host)
-- [Add a Replica Server](#add-a-replica-server)
-- [Availability Groups](#availability-groups)
-- [Common Gotchas](#common-gotchas)
+1. Take a backup of the primary:
+   ```bash
+   bolt plan run openvoxadm::backup --params '{"targets":"primary.example.com"}'
+   ```
+2. Confirm `openvoxadm::status` looks sane on existing hosts.
+3. Ensure new hosts are clean, reachable as root, and can reach Vox Pupuli
+   repos.
+4. Remember: **PostgreSQL** and **r10k** are still not auto-installed by the
+   package task.
 
 ---
 
-## Add Compilers
+## Add compilers — `openvoxadm::add_compilers` (Beta)
 
-Compilers offload catalog compilation from your primary server. If your
-primary is getting slow, or you simply have many agents, adding compilers
-is the quickest win.
+**Prefer this plan.** `openvoxadm::add_compiler` is **deprecated** and only
+wraps this one.
 
-### When to Add Compilers
+### Purpose
 
-- Your primary server CPU is consistently high during puppet runs
-- You have more than ~500 nodes
-- You want faster agent runs
+- Install OpenVox packages on new compiler hosts
+- SSL bootstrap (`waitforcert 60`) — **no automatic CA sign**
+- Point compilers at the primary (`server`, `ca_server`, `ca=false`)
+- Append compiler certnames to OpenVoxDB
+  `/etc/puppetlabs/puppetdb/certificate-allowlist`
+- Set `openvoxadm_availability_group` to `A` or `B`
+- Enable `openvox-server`
 
-### How to Add Compilers
+### Allowlist behavior (important)
+
+The plan **stops** openvoxdb on the allowlist host (dedicated PG host if you
+pass `primary_postgresql_host`, otherwise primary), appends `file_line`
+entries, then **starts** openvoxdb again.
+
+This is the path that adds compilers to the allowlist. Large **install** does
+not.
+
+### Parameters (summary)
+
+| Name | Required | Notes |
+|------|----------|-------|
+| `compiler_hosts` | yes | One or many |
+| `primary_host` | yes | CA / server |
+| `avail_group_letter` | no | Default `A` |
+| `primary_postgresql_host` | no | Where allowlist/openvoxdb live |
+| `version` | no | Default `8.11.0` |
+| `dns_alt_names` | no | **Dead** (accepted unused) |
+
+### Example
 
 ```bash
 bolt plan run openvoxadm::add_compilers \
   --params '{
-    "compiler_hosts": ["compiler3.example.com", "compiler4.example.com"],
-    "primary_host": "primary.example.com",
-    "avail_group_letter": "A"
+    "compiler_hosts":["compiler3.example.com","compiler4.example.com"],
+    "primary_host":"primary.example.com",
+    "primary_postgresql_host":"db.example.com",
+    "avail_group_letter":"B",
+    "version":"8.11.0"
   }'
 ```
 
-**What the plan does:**
+### Manual step after the plan
 
-1. Installs `openvox-server` and `openvox-agent` on each new compiler.
-2. Bootstraps certificates (the primary signs them).
-3. Sets `ca=false` so the compiler does not act as a CA.
-4. Points the compiler at the primary for certificate operations.
-5. Adds the compiler's certname to OpenVoxDB's allowlist.
-6. Starts the openvox-server service.
+On the primary, sign each new compiler:
 
-### Parameters
+```bash
+puppetserver ca list --all
+puppetserver ca sign --certname compiler3.example.com
+puppetserver ca sign --certname compiler4.example.com
+```
 
-| Parameter | Description |
-|-----------|-------------|
-| `compiler_hosts` | Array of hostnames for the new compilers |
-| `primary_host` | Your primary server (must already be installed) |
-| `avail_group_letter` | `"A"` or `"B"` — which availability group to assign |
-| `dns_alt_names` | Optional array of SANs for compiler certs |
-| `primary_postgresql_host` | Optional; only needed if you have a dedicated DB |
+Docs that say “the primary signs them automatically” are **wrong** for current
+code.
 
-### After Adding Compilers
+### What success looks like
 
-1. **Update your load balancer** (if any) to include the new compilers.
-2. **Run `puppet agent -t`** on a test agent to verify it can reach the
-   compilers.
-3. **Check status:**
-   ```bash
-   bolt plan run openvoxadm::status --targets compiler3.example.com,compiler4.example.com
-   ```
+- Compilers: `systemctl is-active openvox-server` → `active`
+- Allowlist file contains the new certnames
+- After signing, agent/compiler TLS works
 
 ---
 
-## Add a Database Host
+## Add a dedicated database — `openvoxadm::add_database` (WIP)
 
-By default, OpenVoxDB and PostgreSQL run on the primary server. Moving them
-to a dedicated host improves performance and lets you tune the database
-independently.
+**Param name quirk:** the DB host parameter is `targets` (plural) but typed as
+a single host.
 
-### When to Add a Database Host
+### Modes
 
-- You have a Large or Extra Large architecture
-- The primary server is under memory pressure
-- You want to back up the database separately
+| `mode` | Behavior |
+|--------|----------|
+| `undef` or `init` | `configure_postgresql` + `configure_openvoxdb` (wire primary `puppetdb.conf`) |
+| `pair` | Prints that HA replication is **not implemented**; only `configure_postgresql` |
 
-### How to Add a Database Host
+### Example — init
 
 ```bash
 bolt plan run openvoxadm::add_database \
   --params '{
-    "targets": "db.example.com",
-    "primary_host": "primary.example.com",
-    "mode": "init"
+    "targets":"db.example.com",
+    "primary_host":"primary.example.com",
+    "mode":"init",
+    "version":"8.11.0"
   }'
 ```
 
-**What the plan does:**
+### Honest limits
 
-1. Installs PostgreSQL and openvoxdb on the new host.
-2. Creates the `puppetdb` database and user.
-3. Configures `database.ini` with the connection string.
-4. Updates the primary's `puppetdb.conf` to point at the new host.
-5. Restarts services.
-
-### Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `targets` | Hostname of the new database host |
-| `primary_host` | Your primary server |
-| `mode` | `"init"` for the first external DB, `"pair"` for HA (XL) |
-
-> **Note:** After adding a dedicated database, your primary no longer needs
-> local PostgreSQL. You can optionally stop it there, but it will not hurt to
-> leave it running.
+- Does **not** migrate existing co-located OpenVoxDB/Postgres data off the
+  primary. Plan for dump/restore yourself if you are moving an established DB.
+- `pair` is a **stub**, not streaming replication.
+- Still depends on PostgreSQL packages being present/usable on the DB host.
+- `configure_openvoxdb` **overwrites** allowlist to primary-only — re-add
+  compilers afterward if needed.
 
 ---
 
-## Add a Replica Server
+## Add a replica — `openvoxadm::add_replica` (Experimental)
 
-A replica server provides high availability. If your primary goes down, the
-replica can take over as the new primary (with some manual steps for full
-failover).
+### What it does
 
-### When to Add a Replica
+1. Stops `puppet` on primary (errors ignored).
+2. Installs packages on `replica_host`; SSL bootstrap.
+3. Sets `server`, `ca_server`, `openvoxadm_role=server`,
+   `openvoxadm_availability_group=B` (hardcoded B).
+4. Enables `openvox-server`.
+5. Optional `replica_postgresql_host`: packages + enable postgresql/openvoxdb
+   **only** — no OpenVoxDB rewire, no replication.
 
-- You have an Extra Large architecture
-- You need zero-downtime maintenance
-- You want disaster recovery capability
-
-### How to Add a Replica
+### Example
 
 ```bash
 bolt plan run openvoxadm::add_replica \
   --params '{
-    "primary_host": "primary.example.com",
-    "replica_host": "replica.example.com"
+    "primary_host":"primary.example.com",
+    "replica_host":"replica.example.com",
+    "version":"8.11.0"
   }'
 ```
 
-**What the plan does:**
+### What it does *not* do
 
-1. Installs openvox-server on the replica.
-2. Bootstraps certificates pointing to the primary CA.
-3. Sets availability group "B" (primary is "A").
-4. Starts the replica server.
+- CA sync / code sync / automatic failover
+- Streaming replication
+- Zero-downtime HA
 
-### Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `primary_host` | Your existing primary server |
-| `replica_host` | Hostname for the new replica |
-| `replica_postgresql_host` | Optional dedicated PostgreSQL for the replica (XL) |
-
-> **Tip:** After adding a replica, consider setting up PostgreSQL streaming
-> replication between primary and replica DB hosts for full data redundancy.
+Sign the replica CSR manually. Treat this as **bring-up scaffolding**.
 
 ---
 
-## Availability Groups
+## Deprecated: `openvoxadm::add_compiler`
 
-In HA setups, components are tagged with an **availability group** — either
-"A" or "B". This tells openvox-adm which components form a logical pair for
-failover.
-
-### Assigning Groups
-
-When you add compilers or a replica, specify the group:
-
-```bash
-# Add compilers to group B
-bolt plan run openvoxadm::add_compilers \
-  --params '{"compiler_hosts":["comp-b1.example.com"],"primary_host":"primary.example.com","avail_group_letter":"B"}'
-```
-
-### Group Assignments
-
-| Component | Group |
-|-----------|-------|
-| Primary server | A |
-| Replica server | B |
-| Half the compilers | A |
-| Half the compilers | B |
-| Primary PostgreSQL | A |
-| Replica PostgreSQL | B |
-
-If group A fails, group B keeps serving agents. You can promote the replica
-to primary manually or via your own automation.
+Prints a deprecation warning and calls `add_compilers` with a single host.
+Update your scripts.
 
 ---
 
-## ⚠️ Common Gotchas
+## Replace failed PostgreSQL — WIP sibling
 
-### "Certificate not found" after adding a compiler
-
-Make sure the compiler's cert was signed on the primary:
-
-```bash
-puppetserver ca sign --certname compiler3.example.com
-```
-
-Then restart the compiler:
-
-```bash
-systemctl restart openvox-server
-```
-
-### PostgreSQL connection refused
-
-Check that PostgreSQL is running on the database host:
-
-```bash
-systemctl status postgresql
-```
-
-Also verify `pg_hba.conf` allows connections from your primary/compilers.
-
-### Load balancer health checks fail
-
-The health check endpoint is `https://<compiler>:8140/status/v1/simple/master`.
-Make sure your LB is configured to check this URL and that port 8140 is open.
+`openvoxadm::replace_failed_postgresql` rewires config to a replacement host.
+It does **not** copy data; `working_postgresql_host` and
+`failed_postgresql_host` are logged only. See
+[backup_restore.md](backup_restore.md) and [plan-reference.md](plan-reference.md).
 
 ---
 
-## Next Steps
+## Suggested order for growing from Standard
 
-- [Check cluster status](status.md) to verify everything is healthy.
-- Set up [backups](backup_restore.md) before making more changes.
-- Review [architectures](architectures.md) if you want to re-architect.
+1. Backup
+2. `add_database` (`init`) if you need a dedicated DB — accept WIP risk / manual
+   data move
+3. `add_compilers` for scale-out compile (sign CSRs; watch allowlist)
+4. Defer `add_replica` / `pair` until HA features exist
 
+---
+
+## Related footguns
+
+Allowlist wipe on reconfigure, unsigned CSRs, trust auth: 
+[troubleshooting.md](troubleshooting.md), [security-notes.md](security-notes.md).

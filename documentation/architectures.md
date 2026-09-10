@@ -1,239 +1,165 @@
-# OpenVox Architectures
+# Architectures
 
-openvox-adm supports three deployment architectures. Each one balances
-simplicity, performance, and availability differently. This document
-explains when to choose each architecture and how the components fit
-together.
+openvox-adm describes three deployment shapes. **Only Standard is Beta.** Large
+is Experimental. Extra Large / HA is WIP scaffolding. This page matches the
+code on `development`, not an aspirational PEADM brochure.
 
-> **Friendly reminder:** You do not need to pick perfectly on day one. You
-> can start with a Standard architecture and expand to Large or Extra Large
-> later using the `add_database`, `add_compilers`, and `add_replica` plans.
+For Bolt parameters, see [plan-reference.md](plan-reference.md). For Standard
+keystrokes, see [runbook-install-standard.md](runbook-install-standard.md).
 
 ---
 
-## Table of Contents
+## Choosing an architecture
 
-- [Standard Architecture](#standard-architecture)
-- [Large Architecture](#large-architecture)
-- [Extra Large (HA) Architecture](#extra-large-ha-architecture)
-- [Availability Groups](#availability-groups)
-- [Load Balancing Compilers](#load-balancing-compilers)
-- [Choosing an Architecture](#choosing-an-architecture)
+| If you need… | Choose | Maturity |
+|--------------|--------|----------|
+| One server to learn / lab / small fleet | **Standard** | Beta |
+| Separate DB + compile capacity | **Large** | Experimental |
+| True HA with streaming Postgres + LB | **Not ready** — XL is WIP | WIP |
 
----
-
-## Standard Architecture
-
-The simplest possible OpenVox deployment. Everything lives on a single
-server:
-
-```
-┌─────────────────────────────────────┐
-│         primary.example.com         │
-│  ┌─────────────┐  ┌───────────────┐ │
-│  │ openvox-    │  │ openvoxdb     │ │
-│  │ server      │  │ + PostgreSQL  │ │
-│  │ (CA, r10k)  │  │               │ │
-│  └─────────────┘  └───────────────┘ │
-└─────────────────────────────────────┘
-         ▲
-         │ agents connect here
-```
-
-**Components:**
-
-| Component | Purpose |
-|-----------|---------|
-| `openvox-server` | CA, catalog compilation, r10k code deployment |
-| `openvoxdb` | Stores facts, catalogs, reports |
-| `postgresql` | Backend database for OpenVoxDB |
-
-**Pros:**
-
-- Easiest to set up and maintain
-- Lowest infrastructure cost
-- Great for learning OpenVox or small teams
-
-**Cons:**
-
-- Single point of failure
-- Database and server compete for resources
-- Limited to roughly 500 nodes
-
-**Best for:** Labs, small teams, or fewer than 500 nodes.
+You can start Standard and expand later with day-2 plans. Expansion plans have
+their own maturity (compilers Beta-ish; database WIP; replica Experimental
+bring-up only).
 
 ---
 
-## Large Architecture
-
-Split the database onto its own host. This improves performance because
-database queries do not contend with catalog compilation.
+## Standard — single server (Beta)
 
 ```
-┌──────────────────────────┐      ┌──────────────────────────┐
-│   primary.example.com    │      │     db.example.com       │
-│  ┌────────────────────┐  │      │  ┌────────────────────┐  │
-│  │ openvox-server     │  │─────▶│  │ PostgreSQL         │  │
-│  │ (CA, r10k)         │  │      │  │ + openvoxdb        │  │
-│  └────────────────────┘  │      │  └────────────────────┘  │
-└──────────────────────────┘      └──────────────────────────┘
-           ▲
-           │
-    ┌──────┴──────┐
-    │             │
-┌───▼────┐   ┌────▼───┐
-│comp1   │   │comp2   │
-│(ca=f)  │   │(ca=f)  │
-└────────┘   └────────┘
+┌─────────────────────────────┐
+│ primary.example.com         │
+│  openvox-server (CA+compile)│
+│  openvoxdb                  │
+│  postgresql                 │
+└─────────────────────────────┘
 ```
 
-**Components:**
+**Why it exists:** fewest moving parts; best-tested install path.
 
-| Host | Components |
-|------|------------|
-| `primary.example.com` | openvox-server, r10k |
-| `db.example.com` | PostgreSQL, openvoxdb |
-| `compiler*.example.com` | openvox-server with `ca=false` |
+**Prerequisites:** PostgreSQL present; optional r10k preinstalled if you pass
+`r10k_remote`.
 
-**Pros:**
-
-- Better performance at scale
-- Database tuning does not affect the primary server
-- Compilers offload catalog compilation from the primary
-
-**Cons:**
-
-- More hosts to manage
-- Still a single database (no HA)
-
-**Best for:** 500–5,000 nodes, or when you want independent database tuning.
-
----
-
-## Extra Large (HA) Architecture
-
-Full redundancy with availability groups. If one group fails, the other
-continues serving agents.
-
-```
-                     ┌──────────────────────────────┐
-                     │   Load Balancer (HAProxy)    │
-                     │   puppet.example.com         │
-                     └──────────────┬───────────────┘
-                                    │
-            ┌───────────────────────┼───────────────────────┐
-            │                       │                       │
-    ┌───────▼────────┐     ┌────────▼────────┐     ┌────────▼────────┐
-    │  primary-a     │     │  primary-b      │     │  compilers      │
-    │  (group A)     │     │  (group B)      │     │  (A/B pools)    │
-    │  openvox-server│     │  openvox-server │     │                 │
-    └───────┬────────┘     └───────┬─────────┘     └────────┬────────┘
-            │                      │                        │
-    ┌───────▼────────┐     ┌───────▼─────────┐     ┌────────▼────────┐
-    │  db-a          │     │  db-b           │     │  (agents)       │
-    │  PostgreSQL A  │◀───▶│  PostgreSQL B   │     │                 │
-    │  openvoxdb     │     │  openvoxdb      │     │                 │
-    └────────────────┘     └─────────────────┘     └─────────────────┘
-         (streaming replication)
-```
-
-**Components:**
-
-| Role | Group | Purpose |
-|------|-------|---------|
-| Primary server | A | Main CA, r10k, primary compilation |
-| Replica server | B | Hot standby; can take over if A fails |
-| Compiler pool A | A | Catalog compilation (behind LB) |
-| Compiler pool B | B | Catalog compilation (behind LB) |
-| PostgreSQL A | A | Primary database |
-| PostgreSQL B | B | Replica database (streaming replication) |
-
-**Pros:**
-
-- Zero-downtime failover
-- Horizontal scaling of compilation capacity
-- Database redundancy
-
-**Cons:**
-
-- Most complex to set up
-- Highest infrastructure cost
-- Requires load balancer configuration
-
-**Best for:** More than 5,000 nodes, or any environment that cannot tolerate
-downtime.
-
----
-
-## 🔀 Availability Groups
-
-In HA (Extra Large) architectures, components are assigned to an
-**availability group** — either "A" or "B". This lets openvox-adm (and you)
-know which components form a logical pair.
-
-| Component | Group A | Group B |
-|-----------|---------|---------|
-| Primary server | ✅ | — |
-| Replica server | — | ✅ |
-| Compiler | ✅ (half) | ✅ (half) |
-| PostgreSQL | ✅ | ✅ |
-
-If group A fails (for example, a datacenter outage), group B continues to
-serve agents. The replica server becomes the new primary, and the B
-compilers keep compiling catalogs.
-
-You assign availability groups when you add compilers or replicas:
+**Install sketch:**
 
 ```bash
-bolt plan run openvoxadm::add_compilers \
-  --params '{"compiler_hosts":["comp-b1.example.com"],"primary_host":"primary.example.com","avail_group_letter":"B"}'
+bolt plan run openvoxadm::install \
+  --params '{"primary_host":"primary.example.com","version":"8.11.0"}'
 ```
+
+**Success looks like:** `openvox-server`, `openvoxdb`, and `postgresql` active;
+primary cert signed; agents can be signed day-2.
+
+**What can go wrong:** missing PostgreSQL package; r10k missing; outbound repo
+blocked. See [troubleshooting.md](troubleshooting.md).
 
 ---
 
-## Load Balancing Compilers
-
-In Large and Extra Large architectures, you will almost certainly want a
-load balancer in front of your compilers. This gives you:
-
-- **High availability** — if one compiler dies, agents are sent to others
-- **Horizontal scaling** — add more compilers to handle more nodes
-
-**Recommended:** [HAProxy](https://www.haproxy.org/), configured with the
-`leastconn` algorithm (agents open long-lived connections).
-
-**Health check endpoint:** `https://<compiler>:8140/status/v1/simple/master`
-
-A sample HAProxy config snippet:
+## Large — compilers + dedicated DB (Experimental)
 
 ```
-backend openvox-compilers
-    balance leastconn
-    option httpchk GET /status/v1/simple/master
-    server compiler1 10.0.1.10:8140 check
-    server compiler2 10.0.1.11:8140 check
+┌──────────────────┐     ┌──────────────────┐
+│ primary          │     │ compiler N       │
+│ openvox-server   │     │ openvox-server   │
+│ (CA)             │     │ ca=false         │
+└────────┬─────────┘     └────────┬─────────┘
+         │                        │
+         └──────────┬─────────────┘
+                    ▼
+         ┌──────────────────────┐
+         │ db.example.com       │
+         │ postgresql + openvoxdb│
+         └──────────────────────┘
 ```
 
-See the [Puppet documentation on compiler load balancing](https://www.puppet.com/docs/pe/latest/installing_compilers.html#load-balancing-compilers)
-for more details (the concepts apply directly to OpenVox).
+**Why it exists:** scale compile load and isolate DB I/O.
+
+**What install configures**
+
+- Packages on all listed hosts
+- Primary CA bootstrap + primary sign
+- Compilers pointed at primary (`server`, `ca_server`, `ca false`)
+- OpenVoxDB on dedicated host; primary `puppetdb.conf` → DB:8081
+- Services enabled on primary, compilers, DB host
+
+**What install does *not* do**
+
+- Auto-sign compiler CSRs
+- Add compilers to OpenVoxDB `certificate-allowlist` (primary only until
+  `add_compilers`)
+- Configure load balancers or `compiler_pool_address` (dead params)
+- Install PostgreSQL/r10k for you
+
+**Operator follow-up after Large install**
+
+1. Sign each compiler certname on the primary.
+2. Either run `openvoxadm::add_compilers` for *additional* compilers (allowlist
+   append is built-in there), or manually ensure allowlist entries exist for
+   compilers created during install.
+3. Place any LB in front yourself (HAProxy examples online are **manual** —
+   this module does not apply `puppetlabs/haproxy` for you).
 
 ---
 
-## Choosing an Architecture
+## Extra Large / HA — WIP (scaffolding)
 
-| If you have... | Choose... |
-|----------------|-----------|
-| < 500 nodes, single site | Standard |
-| 500–5,000 nodes or want DB tuning | Large |
-| > 5,000 nodes or need HA/DR | Extra Large |
+Aspirational shape (not delivered by install today):
 
-You can always start simple and expand later. The `add_database`,
-`add_compilers`, and `add_replica` plans make it easy to grow.
+```
+Group A                          Group B
+primary + compilers + PG/DB      replica + compilers + PG/DB
+              \                     /
+               \                   /
+                load balancer ideas
+```
+
+**Parameters that look real but are incomplete**
+
+| Param | Reality |
+|-------|---------|
+| `replica_host` | Packages may install; **not configured** during install |
+| `replica_postgresql_host` | Packages may install; **not configured** |
+| `compiler_pool_address` / internal A/B pools | **Dead** (unused) |
+
+**Not implemented**
+
+- PostgreSQL streaming replication
+- Automatic A/B failover
+- HAProxy / LB configuration generation
+- CA/code/DB sync for replicas during install
+
+**Day-2 related plans**
+
+- `add_replica` — Experimental bring-up (not zero-downtime HA)
+- `add_database` with `mode => pair` — **stub** (message only + basic PG
+  configure)
+
+Until those mature, treat XL documentation elsewhere on the internet as
+design intent, not openvox-adm capability.
 
 ---
 
-## Next Steps
+## Expanding later
 
-- [Install your cluster](install.md) using the architecture you chose.
-- [Expand later](expanding.md) by adding compilers, a database, or a replica.
-- Set up [backups](backup_restore.md) before going to production.
+| Goal | Plan | Maturity |
+|------|------|----------|
+| More compilers | `add_compilers` | Beta |
+| Move/add dedicated DB | `add_database` (`init`) | WIP |
+| Second PG for HA pair | `add_database` (`pair`) | Stub / WIP |
+| Second server | `add_replica` | Experimental |
+
+Details: [expanding.md](expanding.md).
+
+---
+
+## Inventory tips
+
+- Use hostname strings that match certnames you want.
+- Root SSH from the jump host to every role host.
+- `host-key-check: false` is a lab convenience; tighten for production.
+
+---
+
+## Related
+
+- [install.md](install.md)
+- [security-notes.md](security-notes.md) — trust auth implications for DB hosts
