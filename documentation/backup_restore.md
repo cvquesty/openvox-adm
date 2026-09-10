@@ -19,6 +19,7 @@ This guide covers:
 ## Table of Contents
 
 - [What Gets Backed Up](#what-gets-backed-up)
+- [Backup / Restore Contract](#backup--restore-contract)
 - [Full Backup](#full-backup)
 - [CA-Only Backup](#ca-only-backup)
 - [Restore from Backup](#restore-from-backup)
@@ -44,6 +45,25 @@ The backup plans capture the following data:
 
 ---
 
+## Backup / Restore Contract
+
+`openvoxadm::backup` and `openvoxadm::restore` share one contract:
+
+1. **Backup** writes component archives into a timestamped working directory,
+   then wraps that directory into a **single** `recovery.tar.gz`.
+2. **Restore** takes that outer `*.tar.gz` path (`input_file`), extracts it on
+   the **target**, and restores any present component archives
+   (`certs.tar.gz`, `config.tar.gz`, `environments.tar.gz`, `puppetdb.tar.gz`).
+3. **Migrate** calls backup, then passes `backup['path']` (the recovery
+   tarball) into restore.
+
+Default output location is `/var/backups/openvox` (not `/tmp`).
+
+Destructive plans (`restore`, `restore_ca`, `uninstall`) require
+`confirm => true`.
+
+---
+
 ## Full Backup
 
 A full backup captures everything listed above. Run it regularly — daily
@@ -55,14 +75,22 @@ bolt plan run openvoxadm::backup \
   --params '{"output_directory":"/var/backups/openvox"}'
 ```
 
-**Output:** A timestamped directory like
-`/var/backups/openvox/openvox-backup-2026-04-13T120000Z/` containing:
+**Output:** A single recovery tarball such as:
+
+`/var/backups/openvox/openvox-backup-2026-04-13T120000Z.tar.gz`
+
+That tarball contains a directory with:
 
 - `certs.tar.gz` — all certificates and keys
 - `config.tar.gz` — puppet.conf and related files
 - `environments.tar.gz` — your deployed code
 - `puppetdb.tar.gz` — local OpenVoxDB data (if any)
 - `MANIFEST.txt` — listing of backup contents
+
+The plan return value includes:
+
+- `path` — absolute path to the recovery `.tar.gz` (use this with restore)
+- `directory` — the working directory that was wrapped
 
 **Recommended:** Automate this with a cron job on your primary:
 
@@ -83,29 +111,34 @@ bolt plan run openvoxadm::backup_ca \
   --params '{"output_directory":"/var/backups/openvox"}'
 ```
 
-**Output:** A single file `ca_backup.tgz` inside a timestamped directory.
+**Output:** A single file `ca_backup.tgz` inside a timestamped directory under
+`/var/backups/openvox`.
 
 ---
 
 ## Restore from Backup
 
-If disaster strikes, you can restore your primary from a full backup.
+If disaster strikes, you can restore your primary from a full recovery
+tarball produced by `openvoxadm::backup`.
 
 ```bash
 bolt plan run openvoxadm::restore \
   --targets primary.example.com \
-  --params '{"input_file":"/var/backups/openvox/openvox-backup-2026-04-13T120000Z.tar.gz"}'
+  --params '{
+    "input_file":"/var/backups/openvox/openvox-backup-2026-04-13T120000Z.tar.gz",
+    "confirm": true
+  }'
 ```
 
 **What the plan does:**
 
-1. Extracts the backup tarball.
+1. Extracts the recovery tarball **on the target**.
 2. Stops openvox-server and openvoxdb.
-3. Restores certificates, config, and environments.
+3. Restores certificates, config, environments, and local OpenVoxDB data when
+   those component archives exist (existence is checked on the target).
 4. Restarts services.
 
-> **Warning:** This overwrites existing files. Make sure you really want to
-> restore before running this plan!
+> **Warning:** This overwrites existing files. You must pass `confirm => true`.
 
 ---
 
@@ -117,7 +150,10 @@ deletion), use the CA-only restore:
 ```bash
 bolt plan run openvoxadm::restore_ca \
   --targets primary.example.com \
-  --params '{"file_path":"/var/backups/openvox/ca_backup.tgz"}'
+  --params '{
+    "file_path":"/var/backups/openvox/openvox-ca-backup-.../ca_backup.tgz",
+    "confirm": true
+  }'
 ```
 
 This extracts the CA backup and copies certificates back into place.
@@ -135,7 +171,8 @@ bolt plan run openvoxadm::replace_failed_postgresql \
     "primary_host": "primary.example.com",
     "working_postgresql_host": "db1.example.com",
     "failed_postgresql_host": "db2.example.com",
-    "replacement_postgresql_host": "db3.example.com"
+    "replacement_postgresql_host": "db3.example.com",
+    "version": "8.11.0"
   }'
 ```
 
@@ -147,12 +184,14 @@ bolt plan run openvoxadm::replace_failed_postgresql \
 | `working_postgresql_host` | The still-healthy PostgreSQL host |
 | `failed_postgresql_host` | The dead host (for reference) |
 | `replacement_postgresql_host` | The new host that will take over |
+| `version` | OpenVox package version to install on the replacement |
 
 **What the plan does:**
 
 1. Stops services on the primary.
-2. Installs PostgreSQL and openvoxdb on the replacement.
-3. Updates the primary's configuration to point at the replacement.
+2. Installs packages on the replacement.
+3. Configures PostgreSQL + OpenVoxDB via the shared configure subplans
+   (does **not** set `puppet config set server` to the database host).
 4. Restarts services.
 
 > **Note:** This assumes you have already restored the database from a
