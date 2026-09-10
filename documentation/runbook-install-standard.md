@@ -1,97 +1,176 @@
-# Runbook: Standard OpenVox Install (Server + PuppetDB + r10k)
+# Runbook: Standard install (painfully detailed)
 
-This runbook gives you a **painfully step-by-step** procedure to install a
-working OpenVox Standard architecture (single server) from a completely
-fresh Linux machine. Every command is spelled out. Copy, paste, press Enter.
+**Architecture:** Standard (single server)  
+**Plan:** `openvoxadm::install`  
+**Maturity:** Beta (best-tested path — still not a promise of production polish)  
+**Module:** [cvquesty/openvox-adm](https://github.com/cvquesty/openvox-adm)  
+**Default version pin:** `8.11.0`
 
-> **Target audience:** Someone who has never installed OpenVox before and
-> wants a working single-node server with OpenVoxDB and r10k configured.
-
----
-
-## Prerequisites Checklist
-
-Before you start, verify you have:
-
-- [ ] One Linux server (RHEL 8/9, Rocky, AlmaLinux, Ubuntu 20.04+, Debian 11+)
-- [ ] SSH access to that server as `root`
-- [ ] A "jump host" (your laptop or another machine) with Bolt 3.17.0+ installed
-- [ ] Internet access on both the target server and jump host
-- [ ] The server's hostname is resolvable (or you know its IP)
+This runbook is written so a careful operator can follow it without guessing.
+If a step fails, stop and use [troubleshooting.md](troubleshooting.md) before
+continuing.
 
 ---
 
-## Step 1: Prepare the Jump Host
+## 0. What you will have when finished
 
-You run all the Bolt commands from your jump host (laptop, workstation, etc.).
+On **one** Linux host (the primary):
 
-### 1.1 Install Bolt (if not already installed)
+- Packages: OpenVox agent + server + OpenVoxDB (exact set depends on EL vs
+  Debian — see step 9)
+- Services: `openvox-server`, `openvoxdb`, `postgresql` active (if PostgreSQL
+  was present)
+- CA: primary certname signed by the install plan
+- Optional: r10k config only if you prepared r10k and passed `r10k_remote`
 
-**On macOS:**
+You will **not** have: compilers, replicas, load balancers, SCRAM Postgres
+auth, or Forge-based module install unless you chose that separately.
+
+---
+
+## 1. Gather facts (write them down)
+
+| Item | Example | Your value |
+|------|---------|------------|
+| Jump host OS | macOS / Ubuntu 22.04 | |
+| Primary hostname (FQDN) | `primary.example.com` | |
+| Primary IP | `192.0.2.10` | |
+| OpenVox version pin | `8.11.0` | |
+| DNS alt names (optional) | `puppet.example.com` | |
+| Control repo URL (optional) | `git@github.com:org/control-repo.git` | |
+| Primary OS family | EL8/9 or Ubuntu | |
+
+Confirm the FQDN is what you want as **certname**. Changing certname later is
+painful.
+
+---
+
+## 2. Prepare the primary host
+
+### 2.1 Fresh OS
+
+Use a supported OS from `metadata.json` (EL 8/9 family, Ubuntu 20.04/22.04/24.04,
+etc.). Do **not** start from a host that already has Puppet or OpenVox packages.
+
+### 2.2 Hostname and time
 
 ```bash
-brew install bolt
+hostnamectl
+timedatectl
+# fix hostname / chrony/ntp if needed before install
 ```
 
-**On Linux (RHEL/Rocky/Alma):**
+### 2.3 Outbound network
+
+The host must reach Vox Pupuli package repos:
+
+- EL: `yum.voxpupuli.org`
+- Debian/Ubuntu: `apt.voxpupuli.org`
+
+### 2.4 Install PostgreSQL yourself
+
+The module’s `install_packages` task does **not** explicitly install
+`postgresql`. Before Bolt runs, install and enable a PostgreSQL server that
+provides the `postgresql` systemd unit and a `postgres` OS user (paths vary by
+OS/version).
+
+**What success looks like:**
 
 ```bash
-sudo rpm -Uvh https://yum.puppet.com/puppet7-release-el-$(rpm -E %rhel).noarch.rpm
-sudo yum install -y puppet-bolt
+systemctl is-active postgresql || systemctl is-active postgresql*.service
+sudo -u postgres psql -c 'SELECT 1'
 ```
 
-**On Linux (Ubuntu/Debian):**
+If this fails now, install will fail later when enabling PostgreSQL.
+
+### 2.5 Optional: install r10k yourself
+
+Only if you will pass `r10k_remote`. Example (adjust for your Ruby/policy):
 
 ```bash
-wget https://apt.puppet.com/puppet7-release-$(lsb_release -sc).deb
-sudo dpkg -i puppet7-release-$(lsb_release -sc).deb
-sudo apt-get update
-sudo apt-get install -y puppet-bolt
+# Example only — follow your org's r10k install standard
+gem install r10k
+mkdir -p /etc/puppetlabs/r10k
 ```
 
-### 1.2 Verify Bolt Version
+Confirm:
+
+```bash
+command -v r10k
+r10k version
+```
+
+Private key parameters on the install plan are **dead**. Arrange Git SSH/HTTPS
+auth yourself.
+
+### 2.6 Root SSH from jump host
+
+From the jump host:
+
+```bash
+ssh root@primary.example.com 'echo ok && hostname -f'
+```
+
+---
+
+## 3. Install Bolt on the jump host
+
+Supported by this module: Bolt **`>= 3.17.0` and `< 6.0.0`**.
+
+1. Open the official guide:
+   [Install and upgrade Bolt](https://help.puppet.com/bolt/current/topics/bolt_installing.htm)
+2. Follow the section for your jump-host OS.
+3. **Do not** pipe documentation HTML into a shell.
+
+Verify:
 
 ```bash
 bolt --version
 ```
 
-You should see `3.17.0` or higher. If not, upgrade Bolt.
+If the version is 6.x or newer, this module’s assert will fail until the module
+raises its upper bound.
 
-### 1.3 Create a Bolt Project Directory
+---
+
+## 4. Create a Bolt project and install openvox-adm from Git
 
 ```bash
 mkdir -p ~/openvox-deploy
 cd ~/openvox-deploy
+bolt project init openvox-deploy
 ```
 
-### 1.4 Initialize the Bolt Project
+Edit `Puppetfile`:
+
+```ruby
+mod 'openvox-adm',
+  :git => 'https://github.com/cvquesty/openvox-adm.git',
+  :branch => 'development'
+```
+
+Also ensure any dependencies required by that module’s own `Puppetfile` /
+metadata can be resolved (Bolt will fetch Forge deps declared by the module).
+
+Install:
 
 ```bash
-bolt project init openvox-deploy --modules openvox-adm
+bolt puppetfile install
 ```
 
-This creates the following files:
+**Why Git?** The module is pre-Forge. Prefer
+`https://github.com/cvquesty/openvox-adm.git` over
+`bolt project init --modules openvox-adm` until publication is confirmed.
 
-- `bolt.yaml` — Bolt configuration
-- `inventory.yaml` — target hosts (you will edit this)
-- `Puppetfile` — module dependencies
-- `.modules/` — where modules are installed
+Verify the plan is visible:
+
+```bash
+bolt plan show openvoxadm::install
+```
 
 ---
 
-## Step 2: Configure the Inventory
-
-### 2.1 Create or Edit inventory.yaml
-
-Open `inventory.yaml` in your editor:
-
-```bash
-vim inventory.yaml
-# or: nano inventory.yaml
-```
-
-Replace its contents with the following, changing `primary.example.com` to
-your actual server hostname or IP address:
+## 5. Write inventory.yaml
 
 ```yaml
 ---
@@ -102,317 +181,257 @@ groups:
       ssh:
         host-key-check: false
         user: root
+        run-as: root
     targets:
       - primary.example.com
 ```
 
-> **If using an IP address:** Replace `primary.example.com` with the IP, e.g.,
-> `10.0.1.50`.
+Replace the hostname with yours. For production, prefer known_hosts checking
+instead of `host-key-check: false`.
 
-### 2.2 Test SSH Connectivity
-
-From your jump host, verify you can SSH to the target:
+Connectivity check:
 
 ```bash
-ssh root@primary.example.com hostname
+bolt command run 'hostname -f && whoami' -t primary.example.com
 ```
 
-You should see the target's hostname printed. If this fails, fix SSH access
-before continuing.
+**Success:** output shows your FQDN and `root` (or your run-as user).
 
 ---
 
-## Step 3: Run the Install Plan
+## 6. Decide parameters
 
-### 3.1 Execute the Install
+Minimum:
 
-Run this single command from your jump host, inside the `~/openvox-deploy`
-directory:
+```json
+{
+  "primary_host": "primary.example.com",
+  "version": "8.11.0"
+}
+```
+
+Optional useful keys:
+
+```json
+{
+  "primary_host": "primary.example.com",
+  "version": "8.11.0",
+  "dns_alt_names": ["puppet.example.com"],
+  "r10k_remote": "git@github.com:yourorg/control-repo.git"
+}
+```
+
+Do **not** pass XL-only hopes (`replica_host`, pool addresses) on a Standard
+lab — they will not configure HA.
+
+---
+
+## 7. Pre-flight checklist (tick these)
+
+- [ ] Bolt version in range
+- [ ] `bolt plan show openvoxadm::install` works
+- [ ] SSH to primary as root works
+- [ ] PostgreSQL answers locally on primary
+- [ ] Repos reachable (or proxy configured)
+- [ ] No existing `/etc/puppetlabs/puppet/ssl` from an old install (or you
+      accept wiping via uninstall first)
+- [ ] If using r10k: binary present and Git auth works as root
+
+---
+
+## 8. Run the install plan
+
+From the Bolt project directory:
 
 ```bash
 bolt plan run openvoxadm::install \
   --params '{"primary_host":"primary.example.com","version":"8.11.0"}'
 ```
 
-> **Replace `primary.example.com`** with your actual hostname or IP.
+With DNS alt names:
 
-### 3.2 Watch the Output
-
-The plan will print progress messages like:
-
-```
-Installing OpenVox 8.11.0 on cluster...
-Installing openvox-release repo and packages...
-Bootstrapping certificates on primary...
-Configuring primary server...
-Enabling OpenVoxDB on primary...
-Configuring OpenVoxDB...
+```bash
+bolt plan run openvoxadm::install \
+  --params '{
+    "primary_host":"primary.example.com",
+    "version":"8.11.0",
+    "dns_alt_names":["puppet.example.com"]
+  }'
 ```
 
-This may take 5–15 minutes depending on your server's speed and network.
+### What you should see (conceptually)
 
-### 3.3 Confirm Success
+1. Logged parameters / module version
+2. Package installation on the primary
+3. SSL bootstrap
+4. Primary configure + targeted CA sign for the primary certname
+5. OpenVoxDB database.ini / puppetdb.conf / allowlist write
+6. Services enabled
 
-When the plan finishes, you should see something like:
+**Success:** Bolt exits successfully (no failed tasks). Copy the console output
+to your change ticket.
 
-```
-{"status":"installed","hosts":["primary.example.com"]}
-```
-
-If you see an error, scroll up to find the failure message and check
-[Troubleshooting](#troubleshooting) at the end of this runbook.
+**If it fails:** do not re-run blindly. Check PostgreSQL, repo access, and
+[troubleshooting.md](troubleshooting.md). You may need
+`openvoxadm::uninstall` with `confirm => true` before a clean retry.
 
 ---
 
-## ✅ Step 4: Verify the Installation
+## 9. Verify packages (OS-specific expectations)
 
-### 4.1 Check Status of All Services
-
-Run the status plan:
+### 9.1 Status plan
 
 ```bash
 bolt plan run openvoxadm::status --targets primary.example.com
 ```
 
-Expected output (abbreviated):
+Expect text including hostname, version, and active/stopped lines for
+`openvox-server`, `openvoxdb`, and `postgresql`.
 
-```
-primary.example.com:
-  openvox-server: running
-  openvoxdb: running
-  postgresql: running
-  version: 8.11.0
-  certname: primary.example.com
-  server: primary.example.com
-  ca_server: primary.example.com
-```
+### 9.2 EL (yum path)
 
-All three services (`openvox-server`, `openvoxdb`, `postgresql`) should show
-`running`.
-
-### 4.2 SSH to the Server and Verify Packages
+You should see OpenVox packages similar to:
 
 ```bash
-ssh root@primary.example.com
+rpm -qa | grep -E 'openvox|openvoxdb' | sort
 ```
 
-Once connected:
+Expect `openvox-server`, `openvox-agent`, `openvoxdb` at your pin.  
+**Do not** expect `openbolt` or `openvoxdb-termini` on the yum install path —
+the task does not install them there.
+
+### 9.3 Debian/Ubuntu (apt path)
 
 ```bash
-rpm -qa | grep -E 'openvox|puppetdb'   # RHEL/Rocky/Alma
-# or
-dpkg -l | grep -E 'openvox|puppetdb'   # Debian/Ubuntu
+dpkg -l | grep -E 'openvox|openbolt' 
 ```
 
-You should see packages like:
+Apt path pins include `openbolt` and `openvoxdb-termini` in addition to agent,
+server, and openvoxdb.
 
-```
-openvox-server-8.11.0-...
-openvox-agent-8.11.0-...
-openvoxdb-8.11.0-...
-openvoxdb-termini-8.11.0-...
-openbolt-3.27.0-...
+### 9.4 Services
+
+```bash
+systemctl is-active openvox-server
+systemctl is-active openvoxdb
+systemctl is-active postgresql
 ```
 
-### 4.3 Check That the CA Is Working
+All should be `active` on a healthy Standard primary (given PostgreSQL was
+installed in step 2.4).
+
+---
+
+## 10. Verify certificates
+
+On the primary:
 
 ```bash
 puppetserver ca list --all
+ls /etc/puppetlabs/puppet/ssl/certs | head
 ```
 
-You should see at least one certificate (the primary's own cert) listed.
+The primary certname should already be signed by the plan. Pending entries are
+normal for agents not yet enrolled.
+
+Sign agents individually:
+
+```bash
+puppetserver ca sign --certname agent1.example.com
+```
+
+Avoid `sign --all` unless you intend to approve every pending request.
 
 ---
 
-## Step 5: Install and Configure r10k
+## 11. Optional r10k verification
 
-### 5.1 Install the r10k Gem
-
-On the primary server:
+If you passed `r10k_remote` and r10k was present:
 
 ```bash
-ssh root@primary.example.com
-gem install r10k
+cat /etc/puppetlabs/r10k/r10k.yaml
+ls /etc/puppetlabs/code/environments
 ```
 
-### 5.2 Create the r10k Configuration Directory
-
-```bash
-mkdir -p /etc/puppetlabs/r10k
-```
-
-### 5.3 Create r10k.yaml
-
-Create `/etc/puppetlabs/r10k/r10k.yaml` with your control repo URL:
-
-```bash
-cat > /etc/puppetlabs/r10k/r10k.yaml << 'EOF'
----
-:cachedir: '/opt/puppetlabs/puppet/cache/r10k'
-:sources:
-  :main:
-    :remote: 'git@github.com:YOURORG/control-repo.git'
-    :basedir: '/etc/puppetlabs/code/environments'
-EOF
-```
-
-> **Replace the `:remote:` URL** with your actual control repository Git URL.
-> If you don't have one yet, use a placeholder — you can change it later.
-
-### 5.4 Generate an SSH Key for r10k (if using SSH Git)
-
-```bash
-ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ''
-cat /root/.ssh/id_ed25519.pub
-```
-
-Copy the public key output and add it to your Git server's deploy keys or
-your GitHub/GitLab SSH keys.
-
-### 5.5 Deploy Environments
-
-```bash
-r10k deploy environment --puppetfile
-```
-
-This clones your control repo into `/etc/puppetlabs/code/environments/`
-and installs any modules listed in the `Puppetfile`.
-
-### 5.6 Verify Environments Exist
-
-```bash
-ls /etc/puppetlabs/code/environments/
-```
-
-You should see at least `production/` and possibly other branches you have
-in your repo.
+If you did **not** pass `r10k_remote`, skip this section — absence of r10k
+config is expected.
 
 ---
 
-## Step 6: Sign Pending Certificates (If Any)
+## 12. Smoke-test OpenVoxDB connectivity (basic)
 
-If any agents have already tried to connect, their certs may be pending:
-
-```bash
-puppetserver ca list
-```
-
-To sign all pending:
+On the primary:
 
 ```bash
-puppetserver ca sign --all
+# local trust-auth style check (lab)
+sudo -u postgres psql -c "\\du" | grep -i puppetdb || true
+systemctl status openvoxdb --no-pager | head
 ```
+
+Remember: auth is **trust** on localhost with empty password in
+`database.ini`. See [security-notes.md](security-notes.md).
 
 ---
 
-## Step 7: Test With an Agent
-
-### 7.1 On a Test Node, Run the Agent
-
-On any Linux machine (not the primary), install the openvox-agent and run:
+## 13. Take a backup before you enroll a fleet
 
 ```bash
-# Install agent (example for RHEL)
-curl -sL https://yum.voxpupuli.org/openvox8-release-el9.noarch.rpm -o /tmp/openvox-release.rpm
-rpm -ivh /tmp/openvox-release.rpm
-yum install -y openvox-agent
-
-# Bootstrap (replace with your primary's hostname)
-puppet ssl bootstrap --server primary.example.com --waitforcert 60
+bolt plan run openvoxadm::backup \
+  --params '{"targets":"primary.example.com"}'
 ```
 
-### 7.2 Sign the Agent Cert on the Primary
-
-Back on the primary:
+Confirm an archive under `/var/backups/openvox/` on the **primary**:
 
 ```bash
-puppetserver ca list
-puppetserver ca sign --certname <agent-hostname>
+bolt command run 'ls -la /var/backups/openvox' -t primary.example.com
 ```
 
-### 7.3 Run Puppet Agent on the Test Node
-
-```bash
-puppet agent -t --server primary.example.com
-```
-
-If you see "Notice: Applied catalog in X.XX seconds" with no errors, your
-OpenVox server is fully working.
+Read [backup_restore.md](backup_restore.md) before you need restore.
 
 ---
 
-## Troubleshooting
+## 14. Enroll a first agent (outline)
 
-### Bolt cannot connect via SSH
-
-**Symptom:** `Permission denied (publickey,password)`
-
-**Fix:**
-
-```bash
-ssh-copy-id root@primary.example.com
-```
-
-Then retry the plan.
-
-### Services fail to start
-
-**Symptom:** `openvox-server: stopped` or `openvoxdb: stopped`
-
-**Fix:**
-
-```bash
-ssh root@primary.example.com
-journalctl -u openvox-server -n 100 --no-pager
-journalctl -u openvoxdb -n 100 --no-pager
-```
-
-Look for errors like missing certificates, database connection refused, or
-port conflicts.
-
-### r10k deploy fails
-
-**Symptom:** `ERROR -> Unable to clone ...`
-
-**Fix:**
-
-- Verify your Git URL is correct.
-- Ensure the SSH key is authorized on your Git server.
-- For HTTPS URLs, ensure credentials are set up (or use SSH).
-
-### Agents cannot reach the server
-
-**Symptom:** `Error: Could not request certificate: ...`
-
-**Fix:**
-
-- Check DNS: `nslookup primary.example.com` from the agent.
-- Check firewall: port 8140 must be open.
-- Check the primary is listening: `ss -tlnp | grep 8140`.
+1. Install `openvox-agent` on the agent host (out of scope for this runbook’s
+   automation).
+2. Point `server` at your primary (or dns_alt_name).
+3. Run agent once; sign CSR on primary with `--certname`.
+4. Re-run agent; confirm catalog apply.
 
 ---
 
-## ✅ Summary Checklist
+## 15. What this runbook does *not* declare
 
-After completing this runbook, you should have:
-
-- [ ] openvox-server running on primary
-- [ ] openvoxdb (PuppetDB) running and connected to PostgreSQL
-- [ ] r10k configured with your control repo
-- [ ] Environments deployed under `/etc/puppetlabs/code/environments/`
-- [ ] At least one agent able to run `puppet agent -t` successfully
-
-**Congratulations!** Your Standard OpenVox cluster is ready for production use.
+- “Ready for production” — **Beta**, not a stability SLA
+- Large/XL install — different docs and lower maturity
+- Automatic compiler signing — not applicable on Standard
+- Complete uninstall of every related package — see [uninstall.md](uninstall.md)
 
 ---
 
-## Next Steps
+## 16. Abort / retry
 
-- **Add compilers** for scale: see [expanding.md](expanding.md)
-- **Set up backups**: see [backup_restore.md](backup_restore.md)
-- **Check status regularly**: `bolt plan run openvoxadm::status --targets all`
-- **Explore the docs**: [README](../README.md), [install.md](install.md)
+Destructive cleanup:
 
+```bash
+bolt plan run openvoxadm::uninstall \
+  --params '{"targets":"primary.example.com","confirm":true}'
+```
 
+Then re-check PostgreSQL still meets step 2.4, and return to step 8.
 
+---
 
+## Checklist summary
+
+1. Prepare host + PostgreSQL (+ optional r10k)
+2. Install Bolt (official docs, version in range)
+3. Bolt project + Git module `cvquesty/openvox-adm`
+4. Inventory + SSH proof
+5. `openvoxadm::install` with `primary_host` + `version`
+6. Verify status, packages, services, CA
+7. Backup
+8. Enroll agents carefully
+
+You are done with Standard install when steps 9–10 look healthy and you have a
+recovery tarball from step 13.
